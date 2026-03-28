@@ -4,102 +4,25 @@ import { createAnthropicClient, callWithWebSearch, extractJSON } from '@/lib/ant
 export const maxDuration = 120;
 export const runtime = 'nodejs';
 
-const MACRO_PROMPT = `You are a senior Goldman Sachs macro analyst trading DAX (GER40) and FTSE 100 for a trader based in New Delhi, India (IST). You use a macro-first institutional approach inspired by Soros, Druckenmiller, and Paul Tudor Jones.
+const MACRO_PROMPT = `GS macro analyst. Today: ${new Date().toUTCString()}. IST trader, DAX + FTSE 100.
 
-Today is ${new Date().toUTCString()}.
+Search for CURRENT: Gold price/trend, Brent Oil, GBP/USD, EUR/USD, S&P 500, VIX, DAX level, FTSE level, any ECB/BOE/Fed news, major geopolitical events.
 
-Use web search to gather the LATEST market data, then calculate the macro score.
+SCORING:
+A) Geopolitical/Risk (-3 to +3): VIX, gold, oil, geopolitics
+B) Central Banks (-2 to +2): Fed/ECB/BOE language, USD strength
+C) Market Direction (-3 to +3): S&P, DAX, FTSE trend
+D) News Adjustment (-2 to +2): Tier 1 only (CPI/NFP/FOMC/GDP)
 
-SEARCH FOR:
-1. Gold (XAU/USD) price and trend — leading risk indicator
-2. Brent Oil price — Iran risk / FTSE driver
-3. GBP/USD — FTSE inverse signal
-4. EUR/USD — DAX inverse signal
-5. S&P 500 — global risk lead
-6. VIX level — fear gauge
-7. DAX and FTSE 100 current levels and today's performance
-8. Latest ECB, BOE, Fed statements or decisions
-9. Any major geopolitical events today (especially Iran, Middle East, Ukraine)
-10. High-impact economic data released today or due tomorrow
+TIERS: ±6-8=TIER1 (1% risk), ±4-5=TIER2 (0.5% risk), ±3 or less=NO TRADE.
 
-SCORING SYSTEM (Goldman Sachs macro framework):
-
-Group A — Geopolitical / Risk Sentiment (range: -3 to +3):
-  Read from: VIX level, Gold trend, geopolitical headlines, Oil price action
-  +3 = extreme risk-on (VIX <15, gold falling, no crises, equities surging)
-  +2 = risk-on
-  +1 = slight risk-on
-   0 = neutral
-  -1 = slight risk-off
-  -2 = risk-off (VIX 20-25, gold rising, tensions elevated)
-  -3 = extreme risk-off (VIX >30, gold surging, active geopolitical crisis)
-
-Group B — Central Banks (range: -2 to +2):
-  Read from: Fed/ECB/BOE recent language, rate expectations, USD strength
-  +2 = very dovish (rate cuts imminent, QE, weak guidance)
-  +1 = dovish lean
-   0 = neutral / on hold
-  -1 = hawkish lean
-  -2 = very hawkish (hikes, QT, fighting inflation)
-
-Group C — Market Direction (range: -3 to +3):
-  Read from: S&P 500, DAX, FTSE 100 — trend, momentum, price action
-  +3 = all three in strong bull trend with momentum
-  +2 = broadly bullish
-  +1 = slightly bullish / mixed with upward lean
-   0 = sideways / truly mixed
-  -1 = slightly bearish / mixed with downward lean
-  -2 = broadly bearish
-  -3 = all three in strong bear trend (sell-off mode)
-
-News Adjustment — Tier 1 events only (range: -1 to +1 per major event, max ±2):
-  Tier 1 events: ECB/BOE/FOMC decisions, NFP, CPI, GDP
-  +1 per bullish Tier 1 catalyst, -1 per bearish Tier 1 catalyst
-
-TRADEABLE THRESHOLD — GS RULES (CRITICAL):
-  ±6 to ±8 = TIER 1 — Full size trade (1% account risk). Trade confirmed.
-  ±4 to ±5 = TIER 2 — Half size (0.5% risk). KEY level required for entry.
-  ±3 or less = NO TRADE — Absolute rule, no exceptions.
-  Direction only trades — never counter-trend.
-
-Return ONLY valid JSON (no markdown):
-{
-  "scores": {
-    "geopolitical_risk": <integer -3 to 3>,
-    "central_banks": <integer -2 to 2>,
-    "market_direction": <integer -3 to 3>,
-    "news_adjustment": <integer -2 to 2>
-  },
-  "total_score": <integer capped -8 to +8>,
-  "tier": <1, 2, or "NO TRADE">,
-  "tradeable": <true if |total_score| >= 4, else false>,
-  "direction": <"LONG", "SHORT", or "NO TRADE">,
-  "risk_size": <"Full size (1% risk)" if Tier 1, "Half size (0.5% risk)" if Tier 2, "NO TRADE" if not tradeable>,
-  "reasoning": {
-    "geopolitical_risk": "<one sentence with specific data: VIX level, gold move, key events>",
-    "central_banks": "<one sentence with specific data: latest CB language, rate expectations>",
-    "market_direction": "<one sentence with specific data: S&P/DAX/FTSE levels and moves>",
-    "news_adjustment": "<Tier 1 events today and their impact, or 'No Tier 1 events today'>"
-  },
-  "key_levels": {
-    "dax_watch": "<key DAX level to watch today>",
-    "ftse_watch": "<key FTSE level to watch today>"
-  },
-  "session_notes": "<specific notes for IST trader: which windows to focus on today>",
-  "summary": "<2-3 sentence GS-style executive summary — be direct and specific>",
-  "key_risks": ["<risk 1>", "<risk 2>", "<risk 3>"],
-  "prices_found": {
-    "gold": "<price>", "brent_oil": "<price>", "gbp_usd": "<price>",
-    "eur_usd": "<price>", "sp500": "<price>", "dax": "<price>",
-    "ftse100": "<price>", "vix": "<level>"
-  },
-  "timestamp": "<ISO 8601>"
-}`;
+Return ONLY valid JSON:
+{"scores":{"geopolitical_risk":<-3 to 3>,"central_banks":<-2 to 2>,"market_direction":<-3 to 3>,"news_adjustment":<-2 to 2>},"total_score":<-8 to 8>,"tier":<1,2,"NO TRADE">,"tradeable":<bool>,"direction":<"LONG","SHORT","NO TRADE">,"risk_size":<"Full size (1% risk)","Half size (0.5% risk)","NO TRADE">,"reasoning":{"geopolitical_risk":"<data>","central_banks":"<data>","market_direction":"<data>","news_adjustment":"<data>"},"key_levels":{"dax_watch":"<level>","ftse_watch":"<level>"},"session_notes":"<IST window notes>","summary":"<2 sentence summary>","key_risks":["<r1>","<r2>","<r3>"],"prices_found":{"gold":"<p>","brent_oil":"<p>","gbp_usd":"<p>","eur_usd":"<p>","sp500":"<p>","dax":"<p>","ftse100":"<p>","vix":"<p>"},"timestamp":"<ISO>"}`;
 
 export async function POST() {
   try {
     const client = createAnthropicClient();
-    const rawText = await callWithWebSearch(client, MACRO_PROMPT, 2000);
+    const rawText = await callWithWebSearch(client, MACRO_PROMPT, 1200);
     const data = extractJSON(rawText);
 
     if (typeof data.total_score === 'number') {

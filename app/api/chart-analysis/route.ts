@@ -6,95 +6,36 @@ export const maxDuration = 60;
 export const runtime = 'nodejs';
 
 function buildChartPrompt(timeframe: string): string {
-  return `You are a senior Goldman Sachs technical analyst specialising in DAX (GER40) and FTSE 100 intraday trading. Macro-first, inspired by Soros/Druckenmiller/PTJ.
+  return `GS Trading Desk analyst. Analyse this ${timeframe} DAX/FTSE chart.
 
-Analyse this ${timeframe} chart screenshot using the GS Trading Desk framework.
+RULES: EMA ribbon rejection (ceiling/floor), consolidation breakout = high conviction, stop = swing + 10pts buffer, BE = entry ±9pts. DAX max stop 120pts, FTSE max stop 50pts.
 
-ENTRY RULES TO APPLY:
-- 15M candle CLOSE confirms direction — enter on NEXT 15M candle open
-- Stop behind 15M swing + 10pts buffer
-- DAX max stop: 120pts | FTSE max stop: 50pts
-- Break even: move stop 8-10pts BEYOND entry (not exactly at entry)
-- Consolidation at key level = HIGHER conviction (not a reason to wait)
-
-CONFIRMED HIGH-RELIABILITY PATTERNS:
-1. EMA RIBBON REJECTION — Ribbon is ceiling in downtrend, floor in uptrend
-2. CONSOLIDATION BREAKOUT — Tight range at key level = coiling spring. High volume breakout = enter immediately
-3. ROUND NUMBER BEHAVIOUR — DAX 1,000pt levels, FTSE 10,000 = hard psychological levels
-4. GOLD LEADS STOCKS — If gold chart shows reversal, flag it
-
-SESSION WINDOWS (IST) — note which applies:
-- 12:30: DAX Primary Window 1
-- 13:30: FTSE Primary Window 2
-- 14:30: US Pre-market Secondary Window
-- 16:30: Lunch lull — NO ENTRIES
-- 20:00: US Open Overlap Window 3
-- 21:00: Hard exit — no new entries
-
-Analyse this ${timeframe} chart carefully.
-
-Provide a detailed technical analysis covering:
-
-1. EMA RIBBON STATUS
-   - Are the EMAs (typically 8, 21, 50, 200 or similar) stacked bullishly or bearishly?
-   - Is price above or below the ribbon?
-   - Is the ribbon expanding (trending) or contracting (ranging)?
-
-2. KEY LEVEL
-   - Identify the most significant support or resistance level visible
-   - State the exact price level
-   - Explain why it's significant (prior high/low, consolidation zone, etc.)
-
-3. SETUP TYPE
-   - What pattern or setup is forming? (e.g., Breakout, Pullback to EMA, Bull/Bear flag, Double top/bottom, Range break, Trend continuation, Reversal)
-   - How mature/confirmed is the setup?
-
-4. ENTRY ZONE
-   - Ideal entry price range for the identified setup
-   - Any entry triggers to watch for (candle close above/below, volume confirmation, etc.)
-
-5. STOP ZONE
-   - Where to place stop loss (technical invalidation level)
-   - How many points of risk from the entry zone?
-
-6. OVERALL BIAS
-   - BULLISH, BEARISH, or NEUTRAL for this timeframe
-   - Confidence level: HIGH, MEDIUM, or LOW
-   - Any caveats or conditions that could invalidate the setup
-
-Return your analysis as a valid JSON object ONLY (no markdown wrapper):
+Return ONLY valid JSON (no markdown):
 {
-  "instrument": "<DAX or FTSE 100 — infer from chart if possible, otherwise 'Unknown'>",
-  "timeframe": "15M",
+  "instrument": "<DAX or FTSE 100>",
+  "timeframe": "${timeframe}",
   "ema_ribbon": {
-    "status": "<BULLISH_STACK | BEARISH_STACK | MIXED | FLAT>",
-    "price_position": "<ABOVE_RIBBON | BELOW_RIBBON | INSIDE_RIBBON>",
-    "momentum": "<EXPANDING | CONTRACTING | NEUTRAL>",
-    "detail": "<one sentence description>"
+    "status": "<BULLISH_STACK|BEARISH_STACK|MIXED|FLAT>",
+    "price_position": "<ABOVE_RIBBON|BELOW_RIBBON|INSIDE_RIBBON>",
+    "momentum": "<EXPANDING|CONTRACTING|NEUTRAL>",
+    "detail": "<one sentence>"
   },
   "key_level": {
-    "price": "<exact price or range>",
-    "type": "<SUPPORT | RESISTANCE | BOTH>",
-    "significance": "<why this level matters>"
+    "price": "<price>",
+    "type": "<SUPPORT|RESISTANCE|BOTH>",
+    "significance": "<brief reason>"
   },
   "setup": {
     "type": "<setup name>",
-    "maturity": "<FORMING | DEVELOPING | CONFIRMED | EXHAUSTED>",
-    "description": "<1-2 sentences explaining the setup>"
+    "maturity": "<FORMING|DEVELOPING|CONFIRMED|EXHAUSTED>",
+    "description": "<1-2 sentences>"
   },
-  "entry_zone": {
-    "range": "<price range e.g. 18450-18480>",
-    "trigger": "<what to watch for before entering>"
-  },
-  "stop_zone": {
-    "level": "<price level>",
-    "points_risk": "<estimated risk in points>",
-    "reasoning": "<why this is the invalidation level>"
-  },
-  "bias": "<BULLISH | BEARISH | NEUTRAL>",
-  "confidence": "<HIGH | MEDIUM | LOW>",
-  "caveats": ["<caveat 1>", "<caveat 2>"],
-  "summary": "<2-3 sentence professional summary of what you see>"
+  "entry_zone": { "range": "<price range>", "trigger": "<trigger condition>" },
+  "stop_zone": { "level": "<price>", "points_risk": "<pts>", "reasoning": "<brief>" },
+  "bias": "<BULLISH|BEARISH|NEUTRAL>",
+  "confidence": "<HIGH|MEDIUM|LOW>",
+  "caveats": ["<caveat>"],
+  "summary": "<2 sentence summary>"
 }`;
 }
 
@@ -126,7 +67,7 @@ export async function POST(request: Request) {
 
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 2048,
+      max_tokens: 1000,
       messages: [
         {
           role: 'user',

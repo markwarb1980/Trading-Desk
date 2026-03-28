@@ -35,7 +35,7 @@ export async function callWithWebSearch(
 
   let finalText = '';
 
-  for (let iteration = 0; iteration < 10; iteration++) {
+  for (let iteration = 0; iteration < 4; iteration++) {
     // Cast to any because web_search_20250305 is a server-side built-in tool
     // not yet reflected in the SDK's TypeScript types.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
