@@ -2,6 +2,7 @@
 
 import Header from '@/components/Header';
 import MacroScore from '@/components/MacroScore';
+import MacroFromCharts from '@/components/MacroFromCharts';
 import LivePrices from '@/components/LivePrices';
 import ChartAnalysis from '@/components/ChartAnalysis';
 import TradeCalculator from '@/components/TradeCalculator';
@@ -50,31 +51,56 @@ export interface PriceItem {
 
 export default function TradingDashboard() {
   const [macroData, setMacroData] = useState<MacroData | null>(null);
-  const [pricesData, setPricesData] = useState<PricesData | null>(null);
+  const [, setPricesData] = useState<PricesData | null>(null);
+  const [macroTab, setMacroTab] = useState<'ai' | 'charts'>('charts');
 
   return (
     <div className="min-h-screen bg-slate-950 font-mono">
       <Header />
 
-      {/* Main grid */}
       <main className="max-w-screen-2xl mx-auto px-3 sm:px-4 pb-8 space-y-4">
 
         {/* Row 1: Macro Score + Live Prices */}
         <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+          {/* Macro panel with tab switcher */}
           <div className="xl:col-span-3">
-            <MacroScore onDataUpdate={setMacroData} />
+            {/* Tab switcher */}
+            <div className="flex gap-1 mb-2">
+              <button
+                onClick={() => setMacroTab('charts')}
+                className={`flex-1 py-2 rounded text-xs font-bold border transition-colors ${
+                  macroTab === 'charts'
+                    ? 'bg-violet-600 text-white border-violet-600'
+                    : 'bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500'
+                }`}
+              >
+                📊 MACRO FROM CHARTS
+              </button>
+              <button
+                onClick={() => setMacroTab('ai')}
+                className={`flex-1 py-2 rounded text-xs font-bold border transition-colors ${
+                  macroTab === 'ai'
+                    ? 'bg-amber-500 text-slate-950 border-amber-500'
+                    : 'bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500'
+                }`}
+              >
+                🌐 AI + WEB SEARCH
+              </button>
+            </div>
+
+            {macroTab === 'charts' && <MacroFromCharts />}
+            {macroTab === 'ai' && <MacroScore onDataUpdate={setMacroData} />}
           </div>
+
           <div className="xl:col-span-2">
             <LivePrices onDataUpdate={setPricesData} />
           </div>
         </div>
 
         {/* Row 2: Trade Calculator */}
-        <div>
-          <TradeCalculator macroDirection={macroData?.direction} />
-        </div>
+        <TradeCalculator macroDirection={macroData?.direction} />
 
-        {/* Row 3: Chart Analysis + News */}
+        {/* Row 3: Chart Analysis (15M) + News */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           <ChartAnalysis />
           <NewsCalendar />
@@ -82,11 +108,10 @@ export default function TradingDashboard() {
 
       </main>
 
-      {/* Footer */}
       <footer className="border-t border-slate-800 py-4 px-4 text-center">
         <p className="text-slate-600 text-xs">
           GS Trading Desk — For informational purposes only. Not financial advice.
-          All AI analysis is powered by Claude (Anthropic).
+          AI analysis powered by Claude (Anthropic).
         </p>
       </footer>
     </div>
