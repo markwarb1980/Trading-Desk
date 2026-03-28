@@ -1,275 +1,380 @@
-// Journal module
-let journalEntryId = null;
-let journalCurrentMood = null;
-let journalSaveTimeout = null;
+// Journal module — TradeZella-style
+'use strict';
 
-const MOODS = [
-  { key: 'GREAT', emoji: '😊', label: 'GREAT' },
-  { key: 'GOOD', emoji: '🙂', label: 'GOOD' },
-  { key: 'NEUTRAL', emoji: '😐', label: 'NEUTRAL' },
-  { key: 'BAD', emoji: '😟', label: 'BAD' },
-  { key: 'TERRIBLE', emoji: '😣', label: 'TERRIBLE' },
+var _journalEntryId    = null;
+var _journalMood       = null;
+var _journalSaveTimer  = null;
+var _journalMoodCharts = {};
+var _journalViewDate   = null;  // null = today
+
+var MOODS = [
+  { key: 'GREAT',    emoji: '😊', label: 'Great',    cls: 'selected-great'    },
+  { key: 'GOOD',     emoji: '🙂', label: 'Good',     cls: 'selected-good'     },
+  { key: 'NEUTRAL',  emoji: '😐', label: 'Neutral',  cls: 'selected-neutral'  },
+  { key: 'BAD',      emoji: '😟', label: 'Bad',      cls: 'selected-bad'      },
+  { key: 'TERRIBLE', emoji: '😣', label: 'Terrible', cls: 'selected-terrible' },
 ];
 
-const MOOD_COLORS = {
-  GREAT: '#10b981',
-  GOOD: '#3b82f6',
-  NEUTRAL: '#94a3b8',
-  BAD: '#f59e0b',
+var MOOD_COLORS = {
+  GREAT:    '#10b981',
+  GOOD:     '#3b82f6',
+  NEUTRAL:  '#94a3b8',
+  BAD:      '#f59e0b',
   TERRIBLE: '#f43f5e',
 };
 
-async function loadJournal() {
-  const container = document.getElementById('section-journal');
+window.loadJournal = async function loadJournal() {
+  var container = document.getElementById('section-journal');
 
-  const today = new Date();
-  const todayStr = formatDateLocal(today);
-  const displayDate = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  var today       = new Date();
+  var todayStr    = _jDateStr(today);
+  _journalViewDate = todayStr;
 
-  container.innerHTML = `
-    <div style="display:grid; grid-template-columns:1fr 320px; gap:16px; align-items:start;">
-      <div>
-        <div class="card" style="margin-bottom:16px;">
-          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
-            <div>
-              <div style="font-size:18px; font-weight:700; color:var(--text);">${displayDate}</div>
-              <div style="font-size:11px; color:var(--text-dim); margin-top:2px;">Today's Journal</div>
-            </div>
-            <div id="journalStatus" style="font-size:11px; color:var(--text-dim);"></div>
-          </div>
+  var displayDate = today.toLocaleDateString('en-GB', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+  });
 
-          <div style="margin-bottom:18px;">
-            <div class="form-label" style="margin-bottom:10px;">How are you feeling today?</div>
-            <div class="mood-selector" id="moodSelector">
-              ${MOODS.map(m => `
-                <button class="mood-btn" data-mood="${m.key}" title="${m.label}">
-                  <span style="font-size:22px;">${m.emoji}</span>
-                  <span>${m.label}</span>
-                </button>
-              `).join('')}
-            </div>
-          </div>
+  container.innerHTML = [
+    '<div style="display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start;">',
 
-          <div class="form-group">
-            <label class="form-label">Journal Notes</label>
-            <textarea class="form-control" id="journalNotes" rows="6" placeholder="What happened today? How did your trades go? What were you thinking?"></textarea>
-          </div>
+      // LEFT: today's entry editor
+      '<div>',
+        '<div class="card" style="margin-bottom:16px;">',
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">',
+            '<div>',
+              '<div style="font-size:17px;font-weight:700;color:var(--text);" id="jDateDisplay">' + displayDate + '</div>',
+              '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Trading Journal</div>',
+            '</div>',
+            '<div id="jStatus" style="font-size:11px;color:var(--text-muted);"></div>',
+          '</div>',
 
-          <div class="form-group">
-            <label class="form-label">Mistakes &amp; Lessons</label>
-            <textarea class="form-control" id="journalMistakes" rows="4" placeholder="What mistakes did you make? What did you learn?"></textarea>
-          </div>
+          // Mood row
+          '<div style="margin-bottom:18px;">',
+            '<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;color:var(--text-muted);margin-bottom:10px;">How are you feeling today?</div>',
+            '<div style="display:flex;gap:8px;flex-wrap:wrap;" id="jMoodRow">',
+              MOODS.map(function(m) {
+                return '<button class="mood-btn" data-mood="' + m.key + '">' +
+                  '<span class="mood-emoji">' + m.emoji + '</span>' +
+                  '<span class="mood-label">' + m.label + '</span>' +
+                '</button>';
+              }).join(''),
+            '</div>',
+          '</div>',
 
-          <div style="display:flex; gap:8px; justify-content:flex-end;">
-            <button class="btn btn-secondary btn-sm" id="journalClear">Clear</button>
-            <button class="btn btn-primary" id="journalSave">Save Entry</button>
-          </div>
-        </div>
-      </div>
+          // Notes
+          '<div class="form-group">',
+            '<label class="form-label">Notes &amp; Observations</label>',
+            '<textarea class="form-control" id="jNotes" rows="6" placeholder="What went well today? Key observations, market insights, what you executed well..."></textarea>',
+          '</div>',
 
-      <div>
-        <div class="card" style="margin-bottom:16px;">
-          <div class="card-title">Mood History (Last 7 Days)</div>
-          <div id="moodHistory"></div>
-        </div>
-        <div class="card">
-          <div class="card-title">30-Day Mood Summary</div>
-          <div id="moodSummary"></div>
-        </div>
-      </div>
-    </div>
-  `;
+          // Mistakes
+          '<div class="form-group">',
+            '<label class="form-label">Mistakes &amp; Lessons</label>',
+            '<textarea class="form-control" id="jMistakes" rows="4" placeholder="What mistakes did I make? What to avoid? What will I do differently?"></textarea>',
+          '</div>',
 
-  // Mood button click
-  document.querySelectorAll('.mood-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.mood-btn').forEach(b => b.classList.remove('selected'));
-      btn.classList.add('selected');
-      journalCurrentMood = btn.dataset.mood;
+          '<div style="display:flex;gap:8px;justify-content:flex-end;align-items:center;">',
+            '<span id="jAutoSaveHint" style="font-size:10px;color:var(--text-muted);">Auto-saves on blur</span>',
+            '<button class="btn btn-secondary btn-sm" id="jClearBtn">Clear</button>',
+            '<button class="btn btn-primary" id="jSaveBtn">Save Entry</button>',
+          '</div>',
+        '</div>',
+      '</div>',
+
+      // RIGHT column
+      '<div>',
+        // Mood history (last 7 days)
+        '<div class="card" style="margin-bottom:16px;">',
+          '<div class="card-title">Mood History — Last 7 Days</div>',
+          '<div id="jMoodHistory"></div>',
+        '</div>',
+
+        // Mood distribution (last 30 days)
+        '<div class="card">',
+          '<div class="card-title">Mood Distribution — Last 30 Days</div>',
+          '<div style="position:relative;height:160px;"><canvas id="jMoodChart"></canvas></div>',
+        '</div>',
+      '</div>',
+
+    '</div>',
+  ].join('');
+
+  // Mood button clicks
+  document.querySelectorAll('#jMoodRow .mood-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      _selectMood(btn.dataset.mood);
     });
   });
 
   // Auto-save on blur
-  document.getElementById('journalNotes').addEventListener('blur', () => scheduleSave(todayStr));
-  document.getElementById('journalMistakes').addEventListener('blur', () => scheduleSave(todayStr));
-
-  // Save button
-  document.getElementById('journalSave').addEventListener('click', () => saveJournalEntry(todayStr));
-
-  // Clear button
-  document.getElementById('journalClear').addEventListener('click', () => {
-    document.getElementById('journalNotes').value = '';
-    document.getElementById('journalMistakes').value = '';
-    document.querySelectorAll('.mood-btn').forEach(b => b.classList.remove('selected'));
-    journalCurrentMood = null;
-    journalEntryId = null;
-    setStatus('Cleared');
+  document.getElementById('jNotes').addEventListener('blur', function() {
+    _scheduleJournalSave(todayStr);
+  });
+  document.getElementById('jMistakes').addEventListener('blur', function() {
+    _scheduleJournalSave(todayStr);
   });
 
-  // Load today's entry and history
+  // Save button
+  document.getElementById('jSaveBtn').addEventListener('click', function() {
+    _saveJournalEntry(todayStr);
+  });
+
+  // Clear button
+  document.getElementById('jClearBtn').addEventListener('click', function() {
+    document.getElementById('jNotes').value    = '';
+    document.getElementById('jMistakes').value = '';
+    _selectMood(null);
+    _journalEntryId = null;
+    _setJStatus('Cleared');
+  });
+
+  // Load data
   await Promise.all([
-    loadTodayEntry(todayStr),
-    loadMoodHistory(),
-    loadMoodSummary(),
+    _loadJournalEntry(todayStr),
+    _loadMoodHistory(),
+    _loadMoodDistribution(),
   ]);
-}
+};
 
-function formatDateLocal(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
-async function loadTodayEntry(todayStr) {
-  try {
-    const res = await fetch(`/api/journal/${todayStr}`);
-    if (res.ok) {
-      const entry = await res.json();
-      journalEntryId = entry.id;
-      journalCurrentMood = entry.mood;
-      document.getElementById('journalNotes').value = entry.notes || '';
-      document.getElementById('journalMistakes').value = entry.mistakes || '';
-      if (entry.mood) {
-        const btn = document.querySelector(`.mood-btn[data-mood="${entry.mood}"]`);
-        if (btn) btn.classList.add('selected');
-      }
-      setStatus('Entry loaded');
+// ─── Mood selection ───────────────────────────────────────────────
+function _selectMood(key) {
+  _journalMood = key;
+  document.querySelectorAll('#jMoodRow .mood-btn').forEach(function(btn) {
+    var moodObj = MOODS.find(function(m){ return m.key === btn.dataset.mood; });
+    // Remove all selected classes
+    MOODS.forEach(function(m){ btn.classList.remove(m.cls); });
+    if (key && btn.dataset.mood === key && moodObj) {
+      btn.classList.add(moodObj.cls);
     }
-  } catch (e) {
-    // No entry yet — that's fine
+  });
+}
+
+// ─── Load existing entry ──────────────────────────────────────────
+async function _loadJournalEntry(dateStr) {
+  try {
+    var res = await fetch('/api/journal/' + dateStr);
+    if (res.ok) {
+      var entry = await res.json();
+      _journalEntryId = entry.id;
+      document.getElementById('jNotes').value    = entry.notes    || '';
+      document.getElementById('jMistakes').value = entry.mistakes || '';
+      if (entry.mood) _selectMood(entry.mood);
+      _setJStatus('Entry loaded');
+    }
+  } catch(e) {
+    // No entry yet — fine
   }
 }
 
-function scheduleSave(todayStr) {
-  clearTimeout(journalSaveTimeout);
-  journalSaveTimeout = setTimeout(() => saveJournalEntry(todayStr), 800);
+// ─── Auto-save scheduling ─────────────────────────────────────────
+function _scheduleJournalSave(dateStr) {
+  clearTimeout(_journalSaveTimer);
+  _journalSaveTimer = setTimeout(function() { _saveJournalEntry(dateStr); }, 800);
 }
 
-async function saveJournalEntry(todayStr) {
-  const notes = document.getElementById('journalNotes')?.value || '';
-  const mistakes = document.getElementById('journalMistakes')?.value || '';
+// ─── Save entry ───────────────────────────────────────────────────
+async function _saveJournalEntry(dateStr) {
+  var notes    = (document.getElementById('jNotes')    || {}).value || '';
+  var mistakes = (document.getElementById('jMistakes') || {}).value || '';
 
-  const payload = {
-    date: todayStr,
-    mood: journalCurrentMood,
-    notes,
-    mistakes,
+  var payload = {
+    date:     dateStr,
+    mood:     _journalMood,
+    notes:    notes,
+    mistakes: mistakes,
   };
 
-  setStatus('Saving...');
+  _setJStatus('Saving...');
 
   try {
-    const res = await fetch('/api/journal', {
-      method: 'POST',
+    var res = await fetch('/api/journal', {
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body:    JSON.stringify(payload),
     });
 
     if (res.ok) {
-      const entry = await res.json();
-      journalEntryId = entry.id;
-      setStatus('Saved ✓');
-      setTimeout(() => setStatus(''), 2000);
-      // Refresh mood history
-      await loadMoodHistory();
-      await loadMoodSummary();
+      var entry = await res.json();
+      _journalEntryId = entry.id;
+      _setJStatus('Saved ✓');
+      setTimeout(function(){ _setJStatus(''); }, 2500);
+      _loadMoodHistory();
+      _loadMoodDistribution();
     } else {
-      const d = await res.json();
-      setStatus('Save failed: ' + (d.detail || 'unknown error'));
+      var d = await res.json();
+      _setJStatus('Error: ' + (d.detail || 'failed'));
     }
-  } catch (e) {
-    setStatus('Error: ' + e.message);
+  } catch(e) {
+    _setJStatus('Error: ' + e.message);
   }
 }
 
-function setStatus(msg) {
-  const el = document.getElementById('journalStatus');
+function _setJStatus(msg) {
+  var el = document.getElementById('jStatus');
   if (el) el.textContent = msg;
 }
 
-async function loadMoodHistory() {
-  const el = document.getElementById('moodHistory');
+// ─── Mood History (last 7 days) ───────────────────────────────────
+async function _loadMoodHistory() {
+  var el = document.getElementById('jMoodHistory');
   if (!el) return;
 
-  const today = new Date();
-  const from = new Date(today);
+  var today = new Date();
+  var from  = new Date(today);
   from.setDate(from.getDate() - 6);
-  const fromStr = formatDateLocal(from);
-  const toStr = formatDateLocal(today);
+  var fromStr = _jDateStr(from);
+  var toStr   = _jDateStr(today);
 
   try {
-    const entries = await fetch(`/api/journal?date_from=${fromStr}&date_to=${toStr}`).then(r => r.json());
+    var entries = await fetch('/api/journal?date_from=' + fromStr + '&date_to=' + toStr).then(function(r){ return r.json(); });
 
-    // Build last 7 days
-    const days = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(d.getDate() - i);
-      days.push(formatDateLocal(d));
+    var entryMap = {};
+    if (Array.isArray(entries)) {
+      entries.forEach(function(e){ entryMap[e.date] = e; });
     }
 
-    const entryMap = {};
-    entries.forEach(e => { entryMap[e.date] = e; });
+    // Last 7 days, newest on right
+    var days = [];
+    for (var i = 6; i >= 0; i--) {
+      var d = new Date(today);
+      d.setDate(d.getDate() - i);
+      days.push(d);
+    }
 
-    const dots = days.map(dateStr => {
-      const entry = entryMap[dateStr];
-      const mood = entry?.mood;
-      const moodObj = MOODS.find(m => m.key === mood);
-      const color = mood ? MOOD_COLORS[mood] : 'var(--border2)';
-      const emoji = moodObj ? moodObj.emoji : '○';
-      const dayLabel = new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' });
-      return `
-        <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
-          <div class="mood-dot" style="background:${mood ? color + '20' : 'transparent'}; border-color:${color};" title="${mood || 'No entry'} - ${dateStr}">
-            ${emoji}
-          </div>
-          <div style="font-size:9px; color:var(--text-dim);">${dayLabel}</div>
-        </div>
-      `;
+    var dotsHTML = days.map(function(d) {
+      var dateStr = _jDateStr(d);
+      var entry   = entryMap[dateStr];
+      var mood    = entry ? entry.mood : null;
+      var moodObj = MOODS.find(function(m){ return m.key === mood; });
+      var color   = mood ? MOOD_COLORS[mood] : '#334155';
+      var emoji   = moodObj ? moodObj.emoji : '·';
+      var dayLabel = d.toLocaleDateString('en-GB', { weekday: 'short' });
+      var dateLabel = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+      var isToday  = dateStr === _jDateStr(new Date());
+
+      return '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;" ' +
+               'title="' + dateLabel + (mood ? ': ' + mood : '') + '" ' +
+               'onclick="_viewJournalDate(\'' + dateStr + '\')">' +
+        '<div style="' +
+          'width:36px;height:36px;border-radius:50%;' +
+          'display:flex;align-items:center;justify-content:center;' +
+          'font-size:17px;' +
+          'background:' + (mood ? color + '20' : 'transparent') + ';' +
+          'border:2px solid ' + color + ';' +
+          (isToday ? 'box-shadow:0 0 0 2px ' + color + '40;' : '') +
+        '">' + emoji + '</div>' +
+        '<div style="font-size:9px;color:var(--text-muted);">' + dayLabel + '</div>' +
+      '</div>';
     }).join('');
 
-    el.innerHTML = `<div class="mood-history">${dots}</div>`;
-  } catch (e) {
-    el.innerHTML = `<div style="color:var(--text-dim); font-size:11px;">Could not load mood history</div>`;
+    el.innerHTML = '<div style="display:flex;justify-content:space-between;padding:4px 0;">' + dotsHTML + '</div>';
+
+  } catch(e) {
+    el.innerHTML = '<div style="color:var(--text-muted);font-size:11px;padding:8px 0;">Could not load mood history</div>';
   }
 }
 
-async function loadMoodSummary() {
-  const el = document.getElementById('moodSummary');
-  if (!el) return;
+// Allow clicking a day in mood history to view that day's entry
+window._viewJournalDate = async function(dateStr) {
+  var today = new Date();
+  var todayStr = _jDateStr(today);
+
+  if (dateStr === todayStr) {
+    // Already on today
+    return;
+  }
+
+  // Update date display
+  var displayEl = document.getElementById('jDateDisplay');
+  if (displayEl) {
+    var d = new Date(dateStr + 'T12:00:00');
+    displayEl.textContent = d.toLocaleDateString('en-GB', {
+      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+    });
+  }
+
+  // Clear and load
+  document.getElementById('jNotes').value    = '';
+  document.getElementById('jMistakes').value = '';
+  _selectMood(null);
+  _journalEntryId = null;
+  _journalViewDate = dateStr;
+
+  await _loadJournalEntry(dateStr);
+};
+
+// ─── Mood Distribution chart (last 30 days) ───────────────────────
+async function _loadMoodDistribution() {
+  var ctx = document.getElementById('jMoodChart');
+  if (!ctx) return;
+  if (_journalMoodCharts.dist) { _journalMoodCharts.dist.destroy(); }
 
   try {
-    const summary = await fetch('/api/journal/moods/summary').then(r => r.json());
+    var summary = await fetch('/api/journal/moods/summary').then(function(r){ return r.json(); });
 
-    if (Object.keys(summary).length === 0) {
-      el.innerHTML = '<div style="color:var(--text-dim); font-size:12px; padding:8px 0;">No mood data yet</div>';
+    var counts = MOODS.map(function(m){ return summary[m.key] || 0; });
+    var colors = MOODS.map(function(m){ return MOOD_COLORS[m.key]; });
+    var labels = MOODS.map(function(m){ return m.emoji + ' ' + m.label; });
+
+    var total = counts.reduce(function(a,b){ return a+b; }, 0);
+
+    if (total === 0) {
+      ctx.parentElement.innerHTML = '<div class="empty-state"><p>No mood data yet</p></div>';
       return;
     }
 
-    const total = Object.values(summary).reduce((a, b) => a + b, 0);
+    _journalMoodCharts.dist = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          data: counts,
+          backgroundColor: colors.map(function(c){ return c + 'aa'; }),
+          borderColor: colors,
+          borderWidth: 1,
+          borderRadius: 4,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function(ctx) {
+                var pct = total > 0 ? Math.round(ctx.parsed.y / total * 100) : 0;
+                return ctx.parsed.y + ' day' + (ctx.parsed.y !== 1 ? 's' : '') + ' (' + pct + '%)';
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: 'transparent' },
+            ticks: { color: '#64748b', font: { size: 10, family: 'Inter' } }
+          },
+          y: {
+            grid: { color: '#1e293b' },
+            ticks: {
+              color: '#64748b',
+              font: { size: 10, family: 'Inter' },
+              stepSize: 1,
+            }
+          }
+        }
+      }
+    });
 
-    el.innerHTML = MOODS.map(m => {
-      const count = summary[m.key] || 0;
-      if (count === 0) return '';
-      const pct = Math.round(count / total * 100);
-      const color = MOOD_COLORS[m.key];
-      return `
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-          <span style="font-size:16px;">${m.emoji}</span>
-          <div style="flex:1;">
-            <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:3px;">
-              <span style="color:var(--text-muted);">${m.label}</span>
-              <span style="color:var(--text-dim);">${count} day${count !== 1 ? 's' : ''}</span>
-            </div>
-            <div style="height:4px; background:var(--surface2); border-radius:2px; overflow:hidden;">
-              <div style="height:100%; width:${pct}%; background:${color}; border-radius:2px;"></div>
-            </div>
-          </div>
-        </div>
-      `;
-    }).join('');
-  } catch (e) {
-    el.innerHTML = `<div style="color:var(--text-dim); font-size:11px;">Could not load mood summary</div>`;
+  } catch(e) {
+    if (ctx) ctx.parentElement.innerHTML = '<div class="empty-state"><p>Could not load mood data</p></div>';
   }
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────
+function _jDateStr(d) {
+  var y = d.getFullYear();
+  var m = String(d.getMonth() + 1).padStart(2, '0');
+  var day = String(d.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + day;
 }
