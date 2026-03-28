@@ -83,7 +83,7 @@ After gathering data, return ONLY a valid JSON object with this exact structure 
 export async function POST() {
   try {
     const client = createAnthropicClient();
-    const rawText = await callWithWebSearch(client, MACRO_PROMPT, 4096);
+    const rawText = await callWithWebSearch(client, MACRO_PROMPT, 2000);
 
     const data = extractJSON(rawText);
 

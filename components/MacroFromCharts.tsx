@@ -6,6 +6,25 @@ import {
   AlertTriangle, RefreshCw, X, CheckCircle2, Upload,
 } from 'lucide-react';
 
+/** Resize + compress an image to reduce token usage when sending to Claude */
+async function compressImage(file: File, maxWidth = 900, quality = 0.75): Promise<Blob> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const scale = Math.min(1, maxWidth / img.width);
+      const canvas = document.createElement('canvas');
+      canvas.width  = Math.round(img.width  * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      canvas.toBlob((blob) => resolve(blob ?? file), 'image/jpeg', quality);
+    };
+    img.src = url;
+  });
+}
+
 const INSTRUMENTS = [
   { key: 'gold',   label: 'Gold',     emoji: '🥇', hint: 'XAU/USD daily/4H' },
   { key: 'oil',    label: 'Oil',      emoji: '🛢️', hint: 'Brent/WTI daily/4H' },
@@ -111,18 +130,63 @@ export default function MacroFromCharts() {
     setResult(null);
 
     try {
-      const formData = new FormData();
+      // Compress all images to stay within token limits (~900px wide, JPEG 75%)
+      const compressed: Record<string, Blob> = {};
       for (const [key, file] of Object.entries(files)) {
-        if (file) formData.append(key, file);
+        if (file) compressed[key] = await compressImage(file);
       }
 
-      const res = await fetch('/api/macro-from-charts', { method: 'POST', body: formData });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || `HTTP ${res.status}`);
-      }
-      const json: MacroChartsResult = await res.json();
-      setResult(json);
+      // Split into 2 batches of 3 to avoid rate limits
+      const batch1Keys = ['gold', 'oil', 'gbp_usd'];
+      const batch2Keys = ['sp500', 'dax', 'ftse'];
+
+      const makeFormData = (keys: string[]) => {
+        const fd = new FormData();
+        fd.append('batch', 'true');
+        for (const k of keys) {
+          if (compressed[k]) fd.append(k, compressed[k], `${k}.jpg`);
+        }
+        return fd;
+      };
+
+      // Run both batches sequentially (1s gap) to respect rate limits
+      const res1 = await fetch('/api/macro-from-charts', { method: 'POST', body: makeFormData(batch1Keys) });
+      await new Promise((r) => setTimeout(r, 1000));
+      const res2 = await fetch('/api/macro-from-charts', { method: 'POST', body: makeFormData(batch2Keys) });
+
+      if (!res1.ok) { const e = await res1.json(); throw new Error(e.error || `Batch 1 failed: HTTP ${res1.status}`); }
+      if (!res2.ok) { const e = await res2.json(); throw new Error(e.error || `Batch 2 failed: HTTP ${res2.status}`); }
+
+      const [j1, j2]: [MacroChartsResult, MacroChartsResult] = await Promise.all([res1.json(), res2.json()]);
+
+      // Merge both batch results into one combined result
+      const merged: MacroChartsResult = {
+        instrument_readings: { ...j1.instrument_readings, ...j2.instrument_readings },
+        scores: {
+          geopolitical_risk: Math.round(((j1.scores?.geopolitical_risk ?? 0) + (j2.scores?.geopolitical_risk ?? 0)) / 2),
+          central_banks:     Math.round(((j1.scores?.central_banks     ?? 0) + (j2.scores?.central_banks     ?? 0)) / 2),
+          market_direction:  j2.scores?.market_direction ?? j1.scores?.market_direction ?? 0,
+          news_adjustment:   0,
+        },
+        key_risks:    [...(j1.key_risks ?? []), ...(j2.key_risks ?? [])].slice(0, 4),
+        dax_outlook:  j2.dax_outlook  ?? j1.dax_outlook,
+        ftse_outlook: j2.ftse_outlook ?? j1.ftse_outlook,
+        summary:      j2.summary ?? j1.summary,
+        charts_uploaded: 6,
+        timestamp:    new Date().toISOString(),
+      };
+
+      // Calculate final score and direction
+      const total = Math.max(-8, Math.min(8,
+        (merged.scores?.geopolitical_risk ?? 0) +
+        (merged.scores?.central_banks     ?? 0) +
+        (merged.scores?.market_direction  ?? 0)
+      ));
+      merged.total_score = total;
+      merged.direction   = total > 0 ? 'LONG' : total < 0 ? 'SHORT' : 'NO TRADE';
+      merged.tier        = Math.abs(total) >= 5 ? 1 : Math.abs(total) >= 3 ? 2 : Math.abs(total) >= 1 ? 3 : 'NO TRADE';
+
+      setResult(merged);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Analysis failed');
     } finally {
