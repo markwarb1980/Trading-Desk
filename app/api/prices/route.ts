@@ -1,111 +1,95 @@
 import { NextResponse } from 'next/server';
-// yahoo-finance2 v3 exports the class as default — must be instantiated
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const YahooFinance = require('yahoo-finance2').default;
-const yahooFinance = new YahooFinance();
 
 export const maxDuration = 30;
 export const runtime = 'nodejs';
 
-// Yahoo Finance symbols for each instrument
-const SYMBOLS = {
-  gold:     'GC=F',     // Gold futures (XAU/USD)
-  brent_oil:'BZ=F',     // Brent Crude futures
-  gbp_usd:  'GBPUSD=X', // GBP/USD forex
-  eur_usd:  'EURUSD=X', // EUR/USD forex
-  sp500:    '^GSPC',    // S&P 500 index
-  dax:      '^GDAXI',   // DAX index
-  ftse100:  '^FTSE',    // FTSE 100 index
+const SYMBOLS: Record<string, { yahoo: string; label: string; decimals: number }> = {
+  gold:      { yahoo: 'GC=F',      label: 'Gold (XAU/USD)',  decimals: 2 },
+  brent_oil: { yahoo: 'BZ=F',      label: 'Brent Crude',     decimals: 2 },
+  gbp_usd:   { yahoo: 'GBPUSD=X',  label: 'GBP/USD',         decimals: 4 },
+  eur_usd:   { yahoo: 'EURUSD=X',  label: 'EUR/USD',         decimals: 4 },
+  sp500:     { yahoo: '^GSPC',     label: 'S&P 500',         decimals: 2 },
+  dax:       { yahoo: '^GDAXI',    label: 'DAX',             decimals: 2 },
+  ftse100:   { yahoo: '^FTSE',     label: 'FTSE 100',        decimals: 2 },
 };
 
-// Human-readable labels for display
-const LABELS: Record<string, string> = {
-  gold:     'Gold (XAU/USD)',
-  brent_oil:'Brent Crude',
-  gbp_usd:  'GBP/USD',
-  eur_usd:  'EUR/USD',
-  sp500:    'S&P 500',
-  dax:      'DAX',
-  ftse100:  'FTSE 100',
-};
+async function fetchQuote(symbol: string): Promise<{
+  price: number;
+  change: number;
+  changePct: number;
+} | null> {
+  const encoded = encodeURIComponent(symbol);
+  const url = `https://query2.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=1d&includePrePost=false`;
 
-function formatPrice(price: number, key: string): string {
-  // Forex pairs: 4 decimal places
-  if (key === 'gbp_usd' || key === 'eur_usd') {
-    return price.toFixed(4);
-  }
-  // Large indices & commodities: 2 decimal places
-  return price.toLocaleString('en-GB', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'Accept': 'application/json',
+    },
+    next: { revalidate: 0 },
   });
+
+  if (!res.ok) return null;
+
+  const data = await res.json();
+  const meta = data?.chart?.result?.[0]?.meta;
+  if (!meta) return null;
+
+  const price      = meta.regularMarketPrice ?? 0;
+  const prevClose  = meta.chartPreviousClose ?? meta.previousClose ?? price;
+  const change     = price - prevClose;
+  const changePct  = prevClose !== 0 ? (change / prevClose) * 100 : 0;
+
+  return { price, change, changePct };
 }
 
-function formatChange(change: number, key: string): string {
-  const sign = change >= 0 ? '+' : '';
-  if (key === 'gbp_usd' || key === 'eur_usd') {
-    return `${sign}${change.toFixed(4)}`;
-  }
-  return `${sign}${change.toFixed(2)}`;
+function fmt(n: number, decimals: number): string {
+  return n.toLocaleString('en-GB', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
 }
 
 export async function GET() {
   try {
-    const keys = Object.keys(SYMBOLS) as (keyof typeof SYMBOLS)[];
-    const symbolList = Object.values(SYMBOLS);
+    const keys = Object.keys(SYMBOLS);
 
-    // Fetch all quotes in one batch request
-    const quotes = await yahooFinance.quote(symbolList);
+    // Fetch all symbols in parallel
+    const results = await Promise.allSettled(
+      keys.map((key) => fetchQuote(SYMBOLS[key].yahoo))
+    );
 
-    // Normalise to array regardless of return shape
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const quoteArray: any[] = Array.isArray(quotes) ? quotes : [quotes];
+    const output: Record<string, unknown> = {};
 
-    // Build a lookup by symbol
-    const bySymbol: Record<string, unknown> = {};
-    for (const q of quoteArray) {
-      if (q?.symbol) bySymbol[q.symbol] = q;
-    }
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      const { decimals, label } = SYMBOLS[key];
+      const result = results[i];
 
-    const result: Record<string, unknown> = {};
-
-    for (const key of keys) {
-      const symbol = SYMBOLS[key];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const q: any = bySymbol[symbol];
-
-      if (!q) {
-        result[key] = {
-          price: 'N/A',
-          change: 'N/A',
-          change_pct: 'N/A',
-          direction: 'flat',
-          label: LABELS[key],
+      if (result.status === 'fulfilled' && result.value) {
+        const { price, change, changePct } = result.value;
+        const sign = change >= 0 ? '+' : '';
+        output[key] = {
+          price:      fmt(price, decimals),
+          change:     `${sign}${fmt(change, decimals)}`,
+          change_pct: `${sign}${changePct.toFixed(2)}%`,
+          direction:  change > 0 ? 'up' : change < 0 ? 'down' : 'flat',
+          label,
         };
-        continue;
+      } else {
+        output[key] = {
+          price: 'N/A', change: '--', change_pct: '--', direction: 'flat', label,
+        };
       }
-
-      const price   = q.regularMarketPrice ?? 0;
-      const change  = q.regularMarketChange ?? 0;
-      const pct     = q.regularMarketChangePercent ?? 0;
-      const dir     = change > 0 ? 'up' : change < 0 ? 'down' : 'flat';
-
-      result[key] = {
-        price:      formatPrice(price, key),
-        change:     formatChange(change, key),
-        change_pct: `${change >= 0 ? '+' : ''}${pct.toFixed(2)}%`,
-        direction:  dir,
-        label:      LABELS[key],
-      };
     }
 
-    result.timestamp = new Date().toISOString();
-    result.source    = 'Yahoo Finance';
+    output.timestamp = new Date().toISOString();
+    output.source    = 'Yahoo Finance';
 
-    return NextResponse.json(result);
+    return NextResponse.json(output);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[prices] Yahoo Finance error:', message);
+    console.error('[prices] Error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
