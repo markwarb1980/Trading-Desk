@@ -18,7 +18,7 @@ Return ONLY valid JSON:
 export async function GET() {
   try {
     const client = createAnthropicClient();
-    const rawText = await callWithWebSearch(client, buildPrompt(), 1200);
+    const rawText = await callWithWebSearch(client, buildPrompt(), 1000);
     const data = extractJSON(rawText);
 
     if (!data.timestamp) {

@@ -22,7 +22,7 @@ Return ONLY valid JSON:
 export async function POST() {
   try {
     const client = createAnthropicClient();
-    const rawText = await callWithWebSearch(client, MACRO_PROMPT, 1200);
+    const rawText = await callWithWebSearch(client, MACRO_PROMPT, 1000);
     const data = extractJSON(rawText);
 
     if (typeof data.total_score === 'number') {

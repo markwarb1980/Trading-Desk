@@ -27,7 +27,7 @@ interface RawResponse {
 export async function callWithWebSearch(
   client: Anthropic,
   prompt: string,
-  maxTokens = 4096
+  maxTokens = 1000
 ): Promise<string> {
   const messages: Anthropic.MessageParam[] = [
     { role: 'user', content: prompt },
@@ -35,50 +35,38 @@ export async function callWithWebSearch(
 
   let finalText = '';
 
-  for (let iteration = 0; iteration < 4; iteration++) {
-    // Cast to any because web_search_20250305 is a server-side built-in tool
-    // not yet reflected in the SDK's TypeScript types.
+  // Max 2 iterations: 1 web search + 1 JSON response
+  for (let iteration = 0; iteration < 2; iteration++) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const raw = await (client.messages.create as any)({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-haiku-4-5-20251001', // Haiku: cheaper + faster, same rate limits
       max_tokens: maxTokens,
       tools: [{ type: 'web_search_20250305', name: 'web_search' }],
       messages,
     }) as RawResponse;
 
-    // Collect any text blocks in this response
     const textParts = raw.content
       .filter((b: RawBlock) => b.type === 'text' && typeof b.text === 'string')
       .map((b: RawBlock) => b.text as string);
 
-    if (textParts.length > 0) {
-      finalText = textParts.join('\n');
-    }
+    if (textParts.length > 0) finalText = textParts.join('\n');
 
-    if (raw.stop_reason === 'end_turn') {
-      break;
-    }
+    if (raw.stop_reason === 'end_turn') break;
 
-    // If stop_reason is 'tool_use', continue the agentic loop
     if (raw.stop_reason === 'tool_use') {
-      // Add assistant turn (typed as any to accept server-side tool blocks)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       messages.push({ role: 'assistant', content: raw.content as any });
 
-      // Acknowledge each tool_use so the loop continues
       const toolUseBlocks = raw.content.filter(
         (b: RawBlock) => b.type === 'tool_use' && b.id
       );
 
       if (toolUseBlocks.length > 0) {
-        const isLastIteration = iteration >= 2; // after 3 searches, demand JSON
         const toolResults: Anthropic.ToolResultBlockParam[] = toolUseBlocks.map(
           (b: RawBlock) => ({
             type: 'tool_result',
             tool_use_id: b.id as string,
-            content: isLastIteration
-              ? 'Search done. Output ONLY the JSON object now. No preamble, no markdown, no explanation. Start with { immediately.'
-              : 'Search done.',
+            content: 'Search done. Output ONLY the JSON object now. Start with { immediately. No markdown, no explanation.',
           })
         );
         messages.push({ role: 'user', content: toolResults });
@@ -86,7 +74,6 @@ export async function callWithWebSearch(
         break;
       }
     } else {
-      // Unknown stop reason — exit loop
       break;
     }
   }
