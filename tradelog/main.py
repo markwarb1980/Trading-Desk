@@ -44,6 +44,11 @@ app.include_router(analytics.router)
 app.include_router(playbooks.router)
 app.include_router(import_trades.router)
 
+@app.get("/health", include_in_schema=False)
+async def health():
+    return {"status": "ok"}
+
+
 # Mount static files (frontend)
 frontend_dir = os.path.join(os.path.dirname(__file__), "frontend")
 app.mount("/static", StaticFiles(directory=frontend_dir), name="static")

@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: tradelog
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        value: sqlite:////data/tradelog.db
+      - key: ANTHROPIC_API_KEY
+        sync: false   # set manually in Render dashboard
+    disk:
+      name: tradelog-data
+      mountPath: /data
+      sizeGB: 1

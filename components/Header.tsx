@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Activity, TrendingUp } from 'lucide-react';
+import { Activity, TrendingUp, BookOpen } from 'lucide-react';
 
 export default function Header() {
   const [currentTime, setCurrentTime] = useState('');
@@ -70,8 +70,17 @@ export default function Header() {
             <SessionBadge />
           </div>
 
-          {/* Right — clock */}
+          {/* Right — TradeLog + clock */}
           <div className="flex items-center gap-3 text-xs">
+            <a
+              href={process.env.NEXT_PUBLIC_TRADELOG_URL || 'http://localhost:8000'}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white rounded text-xs font-bold transition-colors"
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              TRADELOG
+            </a>
             <div className="hidden sm:flex items-center gap-1.5 text-slate-500">
               <span>{today}</span>
             </div>
