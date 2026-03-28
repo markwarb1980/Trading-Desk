@@ -1,85 +1,108 @@
 import { NextResponse } from 'next/server';
-import { createAnthropicClient, callWithWebSearch, extractJSON } from '@/lib/anthropic';
+import yahooFinance from 'yahoo-finance2';
 
-export const maxDuration = 60;
+export const maxDuration = 30;
 export const runtime = 'nodejs';
 
-const PRICES_PROMPT = `You are a financial data assistant. Search for the current live market prices RIGHT NOW.
+// Yahoo Finance symbols for each instrument
+const SYMBOLS = {
+  gold:     'GC=F',     // Gold futures (XAU/USD)
+  brent_oil:'BZ=F',     // Brent Crude futures
+  gbp_usd:  'GBPUSD=X', // GBP/USD forex
+  eur_usd:  'EURUSD=X', // EUR/USD forex
+  sp500:    '^GSPC',    // S&P 500 index
+  dax:      '^GDAXI',   // DAX index
+  ftse100:  '^FTSE',    // FTSE 100 index
+};
 
-Today is ${new Date().toUTCString()}.
+// Human-readable labels for display
+const LABELS: Record<string, string> = {
+  gold:     'Gold (XAU/USD)',
+  brent_oil:'Brent Crude',
+  gbp_usd:  'GBP/USD',
+  eur_usd:  'EUR/USD',
+  sp500:    'S&P 500',
+  dax:      'DAX',
+  ftse100:  'FTSE 100',
+};
 
-Search for and return the latest prices for:
-1. Gold (XAU/USD) spot price
-2. Brent Crude Oil price
-3. GBP/USD exchange rate
-4. EUR/USD exchange rate
-5. S&P 500 index (latest price or last close)
-6. DAX index (latest price or last close)
-7. FTSE 100 index (latest price or last close)
+function formatPrice(price: number, key: string): string {
+  // Forex pairs: 4 decimal places
+  if (key === 'gbp_usd' || key === 'eur_usd') {
+    return price.toFixed(4);
+  }
+  // Large indices & commodities: 2 decimal places
+  return price.toLocaleString('en-GB', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
 
-For each asset, find: current/last price, day change (absolute), and percentage change.
-
-Return ONLY a valid JSON object (no markdown, no explanation):
-{
-  "gold": {
-    "price": "<price as string, e.g. 2345.60>",
-    "change": "<absolute change, e.g. +12.30 or -5.40>",
-    "change_pct": "<percentage, e.g. +0.53% or -0.23%>",
-    "direction": "<up, down, or flat>"
-  },
-  "brent_oil": {
-    "price": "<price>",
-    "change": "<change>",
-    "change_pct": "<pct>",
-    "direction": "<up/down/flat>"
-  },
-  "gbp_usd": {
-    "price": "<price>",
-    "change": "<change>",
-    "change_pct": "<pct>",
-    "direction": "<up/down/flat>"
-  },
-  "eur_usd": {
-    "price": "<price>",
-    "change": "<change>",
-    "change_pct": "<pct>",
-    "direction": "<up/down/flat>"
-  },
-  "sp500": {
-    "price": "<price>",
-    "change": "<change>",
-    "change_pct": "<pct>",
-    "direction": "<up/down/flat>"
-  },
-  "dax": {
-    "price": "<price>",
-    "change": "<change>",
-    "change_pct": "<pct>",
-    "direction": "<up/down/flat>"
-  },
-  "ftse100": {
-    "price": "<price>",
-    "change": "<change>",
-    "change_pct": "<pct>",
-    "direction": "<up/down/flat>"
-  },
-  "timestamp": "<ISO 8601 timestamp>"
-}`;
+function formatChange(change: number, key: string): string {
+  const sign = change >= 0 ? '+' : '';
+  if (key === 'gbp_usd' || key === 'eur_usd') {
+    return `${sign}${change.toFixed(4)}`;
+  }
+  return `${sign}${change.toFixed(2)}`;
+}
 
 export async function GET() {
   try {
-    const client = createAnthropicClient();
-    const rawText = await callWithWebSearch(client, PRICES_PROMPT, 2048);
-    const data = extractJSON(rawText);
+    const keys = Object.keys(SYMBOLS) as (keyof typeof SYMBOLS)[];
+    const symbolList = Object.values(SYMBOLS);
 
-    if (!data.timestamp) {
-      data.timestamp = new Date().toISOString();
+    // Fetch all quotes in one batch request
+    const quotes = await yahooFinance.quote(symbolList);
+
+    // Normalise to array regardless of return shape
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const quoteArray: any[] = Array.isArray(quotes) ? quotes : [quotes];
+
+    // Build a lookup by symbol
+    const bySymbol: Record<string, unknown> = {};
+    for (const q of quoteArray) {
+      if (q?.symbol) bySymbol[q.symbol] = q;
     }
 
-    return NextResponse.json(data);
+    const result: Record<string, unknown> = {};
+
+    for (const key of keys) {
+      const symbol = SYMBOLS[key];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const q: any = bySymbol[symbol];
+
+      if (!q) {
+        result[key] = {
+          price: 'N/A',
+          change: 'N/A',
+          change_pct: 'N/A',
+          direction: 'flat',
+          label: LABELS[key],
+        };
+        continue;
+      }
+
+      const price   = q.regularMarketPrice ?? 0;
+      const change  = q.regularMarketChange ?? 0;
+      const pct     = q.regularMarketChangePercent ?? 0;
+      const dir     = change > 0 ? 'up' : change < 0 ? 'down' : 'flat';
+
+      result[key] = {
+        price:      formatPrice(price, key),
+        change:     formatChange(change, key),
+        change_pct: `${change >= 0 ? '+' : ''}${pct.toFixed(2)}%`,
+        direction:  dir,
+        label:      LABELS[key],
+      };
+    }
+
+    result.timestamp = new Date().toISOString();
+    result.source    = 'Yahoo Finance';
+
+    return NextResponse.json(result);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[prices] Error:', message);
+    console.error('[prices] Yahoo Finance error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
