@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
-import yahooFinance from 'yahoo-finance2';
+// yahoo-finance2 v3 exports the class as default — must be instantiated
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const YahooFinance = require('yahoo-finance2').default;
+const yahooFinance = new YahooFinance();
 
 export const maxDuration = 30;
 export const runtime = 'nodejs';
