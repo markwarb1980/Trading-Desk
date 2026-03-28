@@ -39,8 +39,9 @@ export async function callWithWebSearch(
   for (let iteration = 0; iteration < 2; iteration++) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const raw = await (client.messages.create as any)({
-      model: 'claude-haiku-4-5-20251001', // Haiku: cheaper + faster, same rate limits
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: maxTokens,
+      system: 'You are a financial data API. You MUST always respond with valid JSON only. Never apologize, never explain, never add markdown. If data is unavailable, use reasonable estimates or null. Always output the complete JSON object requested.',
       tools: [{ type: 'web_search_20250305', name: 'web_search' }],
       messages,
     }) as RawResponse;
@@ -66,7 +67,7 @@ export async function callWithWebSearch(
           (b: RawBlock) => ({
             type: 'tool_result',
             tool_use_id: b.id as string,
-            content: 'Search done. Output ONLY the JSON object now. Start with { immediately. No markdown, no explanation.',
+            content: 'Search complete. Now output ONLY the JSON object. Start your response with { and end with }. No other text.',
           })
         );
         messages.push({ role: 'user', content: toolResults });
@@ -76,6 +77,23 @@ export async function callWithWebSearch(
     } else {
       break;
     }
+  }
+
+  // If we got text but it's not JSON, make one clean formatting call
+  if (finalText && !finalText.trim().startsWith('{')) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fix = await (client.messages.create as any)({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: maxTokens,
+      system: 'You are a JSON formatter. Output ONLY valid JSON. No explanation, no markdown.',
+      messages: [
+        { role: 'user', content: `Using this information, output the JSON as originally requested:\n\n${finalText.slice(0, 2000)}\n\nOriginal request:\n${prompt.slice(0, 500)}` },
+      ],
+    }) as RawResponse;
+    const fixParts = fix.content
+      .filter((b: RawBlock) => b.type === 'text' && b.text)
+      .map((b: RawBlock) => b.text as string);
+    if (fixParts.length > 0) finalText = fixParts.join('\n');
   }
 
   return finalText;
