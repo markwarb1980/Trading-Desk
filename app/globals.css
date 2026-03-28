@@ -1,0 +1,174 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --bg-primary: #020617;
+  --bg-card: #0f172a;
+  --border-color: #1e293b;
+  --text-primary: #f1f5f9;
+  --text-muted: #64748b;
+  --color-bull: #34d399;
+  --color-bear: #fb7185;
+  --color-neutral: #94a3b8;
+  --color-gold: #fbbf24;
+  --color-blue: #38bdf8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* Terminal card style */
+.card {
+  @apply bg-slate-900 border border-slate-800 rounded-lg;
+}
+
+.card-header {
+  @apply flex items-center justify-between px-4 py-3 border-b border-slate-800;
+}
+
+/* Glow effects */
+.glow-green {
+  box-shadow: 0 0 20px rgba(52, 211, 153, 0.15);
+}
+
+.glow-red {
+  box-shadow: 0 0 20px rgba(251, 113, 133, 0.15);
+}
+
+.glow-blue {
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.15);
+}
+
+/* Ticker animation */
+@keyframes ticker {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.ticker-wrap {
+  overflow: hidden;
+  width: 100%;
+}
+
+.ticker-content {
+  display: inline-flex;
+  animation: ticker 30s linear infinite;
+  white-space: nowrap;
+}
+
+.ticker-content:hover {
+  animation-play-state: paused;
+}
+
+/* Score meter animation */
+@keyframes fillBar {
+  from { width: 0; }
+  to { width: var(--target-width); }
+}
+
+.score-bar {
+  animation: fillBar 1s ease-out forwards;
+}
+
+/* Blinking cursor */
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.cursor-blink {
+  animation: blink 1s step-end infinite;
+}
+
+/* Upload zone */
+.upload-zone {
+  transition: all 0.2s ease;
+}
+
+.upload-zone.dragging {
+  @apply border-sky-400 bg-sky-950;
+}
+
+/* Status indicator */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-dot.live {
+  background-color: #34d399;
+  box-shadow: 0 0 6px rgba(52, 211, 153, 0.8);
+  animation: pulse 2s infinite;
+}
+
+.status-dot.loading {
+  background-color: #fbbf24;
+  animation: pulse 1s infinite;
+}
+
+.status-dot.error {
+  background-color: #fb7185;
+}
+
+/* Price change flash */
+@keyframes flashGreen {
+  0% { background-color: rgba(52, 211, 153, 0.3); }
+  100% { background-color: transparent; }
+}
+
+@keyframes flashRed {
+  0% { background-color: rgba(251, 113, 133, 0.3); }
+  100% { background-color: transparent; }
+}
+
+.flash-green {
+  animation: flashGreen 0.5s ease-out;
+}
+
+.flash-red {
+  animation: flashRed 0.5s ease-out;
+}
+
+/* Mobile responsive text */
+@media (max-width: 640px) {
+  body {
+    font-size: 13px;
+  }
+}
