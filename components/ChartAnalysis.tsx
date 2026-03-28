@@ -44,15 +44,8 @@ interface ChartAnalysisResult {
     maturity: string;
     description: string;
   };
-  entry_zone?: {
-    range: string;
-    trigger: string;
-  };
-  stop_zone?: {
-    level: string;
-    points_risk: string;
-    reasoning: string;
-  };
+  entry_zone?: { range: string; trigger: string };
+  stop_zone?: { level: string; points_risk: string; reasoning: string };
   bias?: string;
   confidence?: string;
   caveats?: string[];
@@ -60,9 +53,6 @@ interface ChartAnalysisResult {
   raw_analysis?: string;
   error?: string;
 }
-
-type Instrument = 'DAX' | 'FTSE';
-type Timeframe = '1H' | '15M';
 
 interface ChartSlot {
   previewUrl: string | null;
@@ -72,13 +62,10 @@ interface ChartSlot {
   uploadedAt: string | null;
 }
 
-const EMPTY_SLOT: ChartSlot = {
-  previewUrl: null,
-  result: null,
-  loading: false,
-  error: null,
-  uploadedAt: null,
-};
+const EMPTY_SLOT: ChartSlot = { previewUrl: null, result: null, loading: false, error: null, uploadedAt: null };
+
+type Instrument = 'DAX' | 'FTSE';
+type SlotKey = Instrument;
 
 function BiasTag({ bias }: { bias: string }) {
   if (bias === 'BULLISH') return (
@@ -101,15 +88,15 @@ function BiasTag({ bias }: { bias: string }) {
 function EmaStatus({ status }: { status: string }) {
   const map: Record<string, { color: string; label: string }> = {
     BULLISH_STACK: { color: 'text-emerald-400', label: 'Bullish Stack' },
-    BEARISH_STACK: { color: 'text-rose-400', label: 'Bearish Stack' },
-    MIXED:         { color: 'text-amber-400', label: 'Mixed' },
-    FLAT:          { color: 'text-slate-400', label: 'Flat' },
+    BEARISH_STACK: { color: 'text-rose-400',    label: 'Bearish Stack' },
+    MIXED:         { color: 'text-amber-400',    label: 'Mixed' },
+    FLAT:          { color: 'text-slate-400',    label: 'Flat' },
   };
   const cfg = map[status] || { color: 'text-slate-400', label: status };
   return <span className={`font-semibold ${cfg.color}`}>{cfg.label}</span>;
 }
 
-function AnalysisResult({ result, timeframe }: { result: ChartAnalysisResult; timeframe: Timeframe }) {
+function AnalysisResult({ result }: { result: ChartAnalysisResult }) {
   return (
     <div className="space-y-2 animate-slide-up">
       {result.raw_analysis && !result.ema_ribbon && (
@@ -123,7 +110,7 @@ function AnalysisResult({ result, timeframe }: { result: ChartAnalysisResult; ti
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <BarChart2 className="w-4 h-4 text-slate-500" />
-              <span className="text-sm font-semibold text-slate-300">{timeframe} Analysis</span>
+              <span className="text-sm font-semibold text-slate-300">15M Analysis</span>
             </div>
             <div className="flex items-center gap-2">
               {result.bias && <BiasTag bias={result.bias} />}
@@ -162,7 +149,7 @@ function AnalysisResult({ result, timeframe }: { result: ChartAnalysisResult; ti
                 <MapPin className="w-3.5 h-3.5" />
                 <span className="uppercase tracking-wider">Key Level</span>
                 <span className={`ml-auto px-1.5 py-0.5 rounded text-xs ${
-                  result.key_level.type === 'SUPPORT' ? 'bg-emerald-950 text-emerald-400' :
+                  result.key_level.type === 'SUPPORT'    ? 'bg-emerald-950 text-emerald-400' :
                   result.key_level.type === 'RESISTANCE' ? 'bg-rose-950 text-rose-400' :
                   'bg-slate-700 text-slate-400'
                 }`}>{result.key_level.type}</span>
@@ -228,15 +215,13 @@ function AnalysisResult({ result, timeframe }: { result: ChartAnalysisResult; ti
   );
 }
 
-function TimeframeSlot({
+function ChartSlotPanel({
   instrument,
-  timeframe,
   slot,
   onFile,
   onClear,
 }: {
   instrument: Instrument;
-  timeframe: Timeframe;
   slot: ChartSlot;
   onFile: (file: File) => void;
   onClear: () => void;
@@ -257,26 +242,22 @@ function TimeframeSlot({
     e.target.value = '';
   };
 
-  const tfColor = timeframe === '1H' ? 'text-amber-400' : 'text-sky-400';
-  const tfBorder = timeframe === '1H' ? 'border-amber-800/60' : 'border-sky-800/60';
-
   return (
-    <div className={`border rounded-lg overflow-hidden ${slot.previewUrl ? tfBorder : 'border-slate-800'}`}>
-      {/* Timeframe label */}
-      <div className={`flex items-center justify-between px-3 py-1.5 border-b border-slate-800 bg-slate-900/50`}>
-        <span className={`text-xs font-bold ${tfColor}`}>{timeframe}</span>
-        {slot.uploadedAt && (
-          <span className="text-xs text-slate-600">{slot.uploadedAt}</span>
-        )}
-        {slot.result?.bias && !slot.loading && (
-          <span className={`text-xs font-bold ${
-            slot.result.bias === 'BULLISH' ? 'text-emerald-400' :
-            slot.result.bias === 'BEARISH' ? 'text-rose-400' : 'text-slate-400'
-          }`}>{slot.result.bias}</span>
-        )}
+    <div className={`border rounded-lg overflow-hidden ${slot.previewUrl ? 'border-sky-800/60' : 'border-slate-800'}`}>
+      {/* Header */}
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-slate-800 bg-slate-900/50">
+        <span className="text-xs font-bold text-sky-400">15M — {instrument}</span>
+        <div className="flex items-center gap-2">
+          {slot.uploadedAt && <span className="text-xs text-slate-600">{slot.uploadedAt}</span>}
+          {slot.result?.bias && !slot.loading && (
+            <span className={`text-xs font-bold ${
+              slot.result.bias === 'BULLISH' ? 'text-emerald-400' :
+              slot.result.bias === 'BEARISH' ? 'text-rose-400' : 'text-slate-400'
+            }`}>{slot.result.bias}</span>
+          )}
+        </div>
       </div>
 
-      {/* Content */}
       <div className="p-2">
         {!slot.previewUrl ? (
           <div
@@ -284,19 +265,20 @@ function TimeframeSlot({
             onDragLeave={() => setDragging(false)}
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
-            className={`border border-dashed rounded-lg p-5 text-center cursor-pointer transition-all ${
+            className={`border border-dashed rounded-lg p-6 text-center cursor-pointer transition-all ${
               dragging ? 'border-sky-400 bg-sky-950/20' : 'border-slate-700 hover:border-slate-500 hover:bg-slate-800/20'
             }`}
           >
             <Upload className="w-6 h-6 text-slate-600 mx-auto mb-1.5" />
-            <div className="text-xs text-slate-500">Upload {instrument} {timeframe}</div>
+            <div className="text-xs text-slate-500">Upload {instrument} 15M chart</div>
+            <div className="text-xs text-slate-700 mt-0.5">Drag & drop or click</div>
             <input ref={fileInputRef} type="file" accept="image/*" onChange={handleInput} className="hidden" />
           </div>
         ) : (
           <div className="relative">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={slot.previewUrl} alt={`${instrument} ${timeframe}`}
-                 className="w-full rounded border border-slate-700 max-h-44 object-contain bg-slate-900" />
+            <img src={slot.previewUrl} alt={`${instrument} 15M`}
+                 className="w-full rounded border border-slate-700 max-h-48 object-contain bg-slate-900" />
             <div className="absolute top-1 right-1 flex gap-1">
               <button onClick={() => fileInputRef.current?.click()}
                       className="p-1 bg-slate-900/80 hover:bg-slate-700 rounded-full border border-slate-600">
@@ -311,7 +293,7 @@ function TimeframeSlot({
               <div className="absolute inset-0 bg-slate-950/70 rounded flex items-center justify-center">
                 <div className="text-center space-y-1">
                   <div className="w-6 h-6 border-2 border-sky-400 border-t-transparent rounded-full animate-spin mx-auto" />
-                  <div className="text-sky-400 text-xs">Analysing...</div>
+                  <div className="text-sky-400 text-xs">Analysing 15M...</div>
                 </div>
               </div>
             )}
@@ -328,7 +310,7 @@ function TimeframeSlot({
 
         {slot.result && !slot.loading && (
           <div className="mt-2">
-            <AnalysisResult result={slot.result} timeframe={timeframe} />
+            <AnalysisResult result={slot.result} />
           </div>
         )}
       </div>
@@ -336,33 +318,36 @@ function TimeframeSlot({
   );
 }
 
-type SlotKey = `${Instrument}_${Timeframe}`;
-
 export default function ChartAnalysis() {
-  const [activeInstrument, setActiveInstrument] = useState<Instrument>('DAX');
   const [slots, setSlots] = useState<Record<SlotKey, ChartSlot>>({
-    DAX_1H:  { ...EMPTY_SLOT },
-    DAX_15M: { ...EMPTY_SLOT },
-    FTSE_1H: { ...EMPTY_SLOT },
-    FTSE_15M:{ ...EMPTY_SLOT },
+    DAX:  { ...EMPTY_SLOT },
+    FTSE: { ...EMPTY_SLOT },
   });
+
+  // Track last request time to stagger concurrent uploads
+  const lastRequestRef = useRef<number>(0);
 
   const updateSlot = (key: SlotKey, patch: Partial<ChartSlot>) => {
     setSlots((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
   };
 
-  const handleFile = useCallback(async (instrument: Instrument, timeframe: Timeframe, file: File) => {
-    const key: SlotKey = `${instrument}_${timeframe}`;
+  const handleFile = useCallback(async (instrument: Instrument, file: File) => {
+    const key: SlotKey = instrument;
     const url = URL.createObjectURL(file);
     const now = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' UTC';
     updateSlot(key, { previewUrl: url, loading: true, error: null, result: null, uploadedAt: now });
 
     try {
+      // Stagger: if another request fired <3s ago, wait to avoid rate limits
+      const gap = Date.now() - lastRequestRef.current;
+      if (gap < 3000) await new Promise(r => setTimeout(r, 3000 - gap));
+      lastRequestRef.current = Date.now();
+
       const compressed = await compressImage(file);
       const formData = new FormData();
       formData.append('image', compressed, 'chart.jpg');
       formData.append('instrument', instrument);
-      formData.append('timeframe', timeframe);
+      formData.append('timeframe', '15M');
 
       const res = await fetch('/api/chart-analysis', { method: 'POST', body: formData });
       if (!res.ok) {
@@ -378,17 +363,9 @@ export default function ChartAnalysis() {
 
   const clearSlot = (key: SlotKey) => updateSlot(key, { ...EMPTY_SLOT });
 
-  // Status badges for header
-  const getInstrumentStatus = (inst: Instrument) => {
-    const h1 = slots[`${inst}_1H`];
-    const m15 = slots[`${inst}_15M`];
-    const biases = [h1.result?.bias, m15.result?.bias].filter(Boolean);
-    const bullCount = biases.filter(b => b === 'BULLISH').length;
-    const bearCount = biases.filter(b => b === 'BEARISH').length;
-    if (bullCount > bearCount) return 'BULLISH';
-    if (bearCount > bullCount) return 'BEARISH';
-    if (biases.length > 0) return 'NEUTRAL';
-    return null;
+  const getStatus = (inst: Instrument) => {
+    const bias = slots[inst].result?.bias;
+    return bias || null;
   };
 
   return (
@@ -398,11 +375,11 @@ export default function ChartAnalysis() {
         <div className="flex items-center gap-2">
           <ScanLine className="w-4 h-4 text-sky-400" />
           <span className="text-sm font-semibold text-slate-200">CHART ANALYSIS</span>
-          <span className="text-xs text-slate-600 hidden sm:block">— AI Vision · 1H + 15M</span>
+          <span className="text-xs text-slate-600 hidden sm:block">— AI Vision · 15M</span>
         </div>
         <div className="flex items-center gap-2">
           {(['DAX', 'FTSE'] as Instrument[]).map((inst) => {
-            const status = getInstrumentStatus(inst);
+            const status = getStatus(inst);
             return (
               <div key={inst} className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs border ${
                 status === 'BULLISH' ? 'bg-emerald-950 text-emerald-400 border-emerald-800' :
@@ -420,56 +397,16 @@ export default function ChartAnalysis() {
         </div>
       </div>
 
-      {/* Instrument tab switcher */}
-      <div className="flex border-b border-slate-800">
-        {(['DAX', 'FTSE'] as Instrument[]).map((inst) => {
-          const h1Loaded = !!slots[`${inst}_1H`].previewUrl;
-          const m15Loaded = !!slots[`${inst}_15M`].previewUrl;
-          const status = getInstrumentStatus(inst);
-          return (
-            <button
-              key={inst}
-              onClick={() => setActiveInstrument(inst)}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-bold border-b-2 transition-colors ${
-                activeInstrument === inst
-                  ? 'border-sky-400 text-sky-400'
-                  : 'border-transparent text-slate-500 hover:text-slate-300'
-              }`}
-            >
-              {inst}
-              {/* Upload progress indicators */}
-              <div className="flex gap-0.5">
-                <span className={`text-xs px-1 rounded ${h1Loaded ? 'text-amber-400 bg-amber-950' : 'text-slate-700 bg-slate-800'}`}>1H</span>
-                <span className={`text-xs px-1 rounded ${m15Loaded ? 'text-sky-400 bg-sky-950' : 'text-slate-700 bg-slate-800'}`}>15M</span>
-              </div>
-              {status && (
-                <span className={`w-1.5 h-1.5 rounded-full ${
-                  status === 'BULLISH' ? 'bg-emerald-400' :
-                  status === 'BEARISH' ? 'bg-rose-400' : 'bg-slate-500'
-                }`} />
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Chart slots — 1H and 15M side by side */}
-      <div className="p-3 space-y-3">
+      {/* Two slots side by side */}
+      <div className="p-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
         {(['DAX', 'FTSE'] as Instrument[]).map((inst) => (
-          activeInstrument === inst && (
-            <div key={inst} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {(['1H', '15M'] as Timeframe[]).map((tf) => (
-                <TimeframeSlot
-                  key={tf}
-                  instrument={inst}
-                  timeframe={tf}
-                  slot={slots[`${inst}_${tf}`]}
-                  onFile={(f) => handleFile(inst, tf, f)}
-                  onClear={() => clearSlot(`${inst}_${tf}`)}
-                />
-              ))}
-            </div>
-          )
+          <ChartSlotPanel
+            key={inst}
+            instrument={inst}
+            slot={slots[inst]}
+            onFile={(f) => handleFile(inst, f)}
+            onClear={() => clearSlot(inst)}
+          />
         ))}
       </div>
     </div>

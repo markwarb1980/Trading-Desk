@@ -71,11 +71,14 @@ export async function callWithWebSearch(
       );
 
       if (toolUseBlocks.length > 0) {
+        const isLastIteration = iteration >= 2; // after 3 searches, demand JSON
         const toolResults: Anthropic.ToolResultBlockParam[] = toolUseBlocks.map(
           (b: RawBlock) => ({
             type: 'tool_result',
             tool_use_id: b.id as string,
-            content: 'Search completed. Please continue your analysis using the results.',
+            content: isLastIteration
+              ? 'Search done. Output ONLY the JSON object now. No preamble, no markdown, no explanation. Start with { immediately.'
+              : 'Search done.',
           })
         );
         messages.push({ role: 'user', content: toolResults });
@@ -97,26 +100,32 @@ export async function callWithWebSearch(
 export function extractJSON(text: string): Record<string, unknown> {
   // Try direct parse first
   try {
-    return JSON.parse(text);
-  } catch {
-    // Try to find JSON block
-    const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (jsonMatch) {
-      try {
-        return JSON.parse(jsonMatch[1].trim());
-      } catch {
-        // continue
-      }
-    }
-    // Try to find first { ... } block
-    const objectMatch = text.match(/\{[\s\S]*\}/);
-    if (objectMatch) {
-      try {
-        return JSON.parse(objectMatch[0]);
-      } catch {
-        // continue
-      }
-    }
-    throw new Error(`Could not extract JSON from response: ${text.slice(0, 200)}`);
+    return JSON.parse(text.trim());
+  } catch { /* continue */ }
+
+  // Try markdown code block
+  const mdMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (mdMatch) {
+    try { return JSON.parse(mdMatch[1].trim()); } catch { /* continue */ }
   }
+
+  // Find the first { and last } to extract the outermost JSON object
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start !== -1 && end !== -1 && end > start) {
+    const candidate = text.slice(start, end + 1);
+    try { return JSON.parse(candidate); } catch { /* continue */ }
+
+    // Try to repair truncated JSON: close open braces/brackets
+    try {
+      let fixed = candidate.replace(/,\s*$/, '');
+      const opens = (fixed.match(/\{/g) || []).length - (fixed.match(/\}/g) || []).length;
+      const openArr = (fixed.match(/\[/g) || []).length - (fixed.match(/\]/g) || []).length;
+      for (let i = 0; i < openArr; i++) fixed += ']';
+      for (let i = 0; i < opens; i++) fixed += '}';
+      return JSON.parse(fixed);
+    } catch { /* continue */ }
+  }
+
+  throw new Error(`Could not extract JSON from response: ${text.slice(0, 300)}`);
 }
