@@ -147,13 +147,17 @@ function SessionBadge() {
 
 function SessionTicker() {
   const sessions = [
-    { name: 'ASIA', utc: '00:00-09:30', ist: '05:30-15:00' },
-    { name: 'LONDON', utc: '08:00-16:30', ist: '13:30-22:00' },
-    { name: 'NEW YORK', utc: '13:30-21:00', ist: '19:00-02:30+1' },
-    { name: 'DAX PRE-MARKET', utc: '07:00-09:00', ist: '12:30-14:30' },
-    { name: 'FTSE PRE-MARKET', utc: '07:00-08:00', ist: '12:30-13:30' },
-    { name: 'NO-TRADE: 30min before HIGH-impact data', utc: '', ist: '' },
-    { name: 'MAX STOP: DAX 120pts · FTSE 50pts', utc: '', ist: '' },
+    { name: '🔔 11:30 IST', utc: '', ist: 'Pre-market prep' },
+    { name: '📊 12:30 IST', utc: '', ist: 'DAX opens — Primary Window 1' },
+    { name: '📊 13:30 IST', utc: '', ist: 'FTSE opens — Primary Window 2' },
+    { name: '🇺🇸 14:30 IST', utc: '', ist: 'US Pre-market — Secondary window' },
+    { name: '⛔ 16:30 IST', utc: '', ist: 'Lunch lull — NO ENTRIES' },
+    { name: '🔥 20:00 IST', utc: '', ist: 'US Open Overlap — Window 3' },
+    { name: '🚪 21:00 IST', utc: '', ist: 'HARD EXIT all positions' },
+    { name: '🔕 22:05 IST', utc: '', ist: 'Both markets close' },
+    { name: '⛔ NO-TRADE ±15min around Tier 1 events', utc: '', ist: '(ECB · BOE · FOMC · NFP · CPI · GDP)' },
+    { name: '📏 MAX STOP: DAX 120pts · FTSE 50pts', utc: '', ist: '' },
+    { name: '📐 TRADE: Score ≥ ±4 only · T1=1%risk · T2=0.5%risk', utc: '', ist: '' },
   ];
 
   const items = [...sessions, ...sessions]; // duplicate for seamless loop
@@ -166,12 +170,8 @@ function SessionTicker() {
             <span key={i} className="inline-flex items-center gap-2 mx-6 text-xs">
               <Activity className="w-3 h-3 text-amber-500/70 flex-shrink-0" />
               <span className="text-amber-400/80 font-medium">{s.name}</span>
-              {s.utc && (
-                <>
-                  <span className="text-slate-600">UTC {s.utc}</span>
-                  <span className="text-slate-700">·</span>
-                  <span className="text-slate-500">IST {s.ist}</span>
-                </>
+              {s.ist && (
+                <span className="text-slate-500">{s.ist}</span>
               )}
             </span>
           ))}

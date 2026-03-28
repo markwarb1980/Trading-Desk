@@ -77,12 +77,19 @@ function directionConfig(direction: string) {
   };
 }
 
-function tierLabel(tier: number | string, direction: string) {
-  if (direction === 'NO TRADE' || tier === 'NO TRADE') return null;
+function tierLabel(tier: number | string, direction: string, totalScore: number) {
+  const abs = Math.abs(totalScore);
+  if (direction === 'NO TRADE' || tier === 'NO TRADE' || abs < 4) return null;
   const n = Number(tier);
-  if (n === 1) return { label: 'TIER 1', desc: 'Strong Signal — Full Size', color: 'text-amber-400 bg-amber-950 border-amber-700' };
-  if (n === 2) return { label: 'TIER 2', desc: 'Moderate Signal — Reduced Size', color: 'text-sky-400 bg-sky-950 border-sky-700' };
-  return { label: 'TIER 3', desc: 'Weak Signal — Small Size Only', color: 'text-slate-400 bg-slate-800 border-slate-600' };
+  if (n === 1 || abs >= 6) return {
+    label: 'TIER 1', color: 'text-amber-400 bg-amber-950 border-amber-700',
+    desc: 'Full size — 1% account risk', sub: 'Partial close 1.5R · Runner to 2R with BE stop'
+  };
+  return {
+    label: 'TIER 2', color: 'text-sky-400 bg-sky-950 border-sky-700',
+    desc: 'Half size — 0.5% account risk · KEY level required',
+    sub: 'Close ALL at 1.5R — no runner on Tier 2'
+  };
 }
 
 function ScoreBar({ score, max }: { score: number; max: number }) {
@@ -144,7 +151,8 @@ export default function MacroScore({ onDataUpdate }: Props) {
   }, [onDataUpdate]);
 
   const dir = data ? directionConfig(data.direction) : null;
-  const tier = data ? tierLabel(data.tier, data.direction) : null;
+  const tier = data ? tierLabel(data.tier, data.direction, data.total_score) : null;
+  const tradeable = data ? Math.abs(data.total_score) >= 4 : false;
 
   return (
     <div className="card h-full">
@@ -236,8 +244,14 @@ export default function MacroScore({ onDataUpdate }: Props) {
               </div>
 
               {tier && (
-                <div className="mt-3 pt-3 border-t border-current/20 text-xs text-slate-400">
-                  {tier.desc}
+                <div className="mt-3 pt-3 border-t border-current/20 space-y-0.5">
+                  <div className="text-xs font-semibold text-slate-200">{tier.desc}</div>
+                  <div className="text-xs text-slate-500">{tier.sub}</div>
+                </div>
+              )}
+              {data && !tradeable && (
+                <div className="mt-3 pt-3 border-t border-slate-700 text-xs font-bold text-rose-400">
+                  ⛔ NO TRADE — Score must reach ±4 (GS Rule — no exceptions)
                 </div>
               )}
             </div>

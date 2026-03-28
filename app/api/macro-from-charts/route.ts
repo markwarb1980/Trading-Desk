@@ -5,44 +5,56 @@ import { createAnthropicClient } from '@/lib/anthropic';
 export const maxDuration = 120;
 export const runtime = 'nodejs';
 
-const ANALYSIS_PROMPT = `You are a professional macro analyst and trader specialising in DAX and FTSE 100.
+const ANALYSIS_PROMPT = `You are a senior Goldman Sachs macro analyst trading DAX (GER40) and FTSE 100. Macro-first institutional approach inspired by Soros, Druckenmiller, and Paul Tudor Jones.
 
-You have been given chart screenshots for multiple instruments. Analyse ALL of them together to produce a holistic macro score and trend assessment.
+You have been given chart screenshots for multiple instruments. Analyse ALL charts together to produce a holistic macro score.
 
-For each instrument chart provided, identify:
-- Current trend direction (bullish/bearish/sideways)
-- Key price levels
+CONFIRMED PATTERNS TO IDENTIFY:
+1. EMA ribbon rejection — HIGH reliability. Ribbon = ceiling in downtrend, floor in uptrend.
+2. Consolidation breakout — HIGH reliability. Tight range at key level = coiling. High volume next candle = enter NOW.
+3. Round number behaviour — DAX: every 1,000pt = hard level. FTSE: 10,000 = major psychological level.
+4. Gold leads stocks — Gold bottom precedes stock bounce. Gold reversal = warning signal.
+
+For each instrument chart identify:
+- Trend direction (BULLISH/BEARISH/SIDEWAYS)
+- Key price level (support/resistance)
+- EMA ribbon status (stacked bull/bear, mixed, flat)
+- Pattern present (from confirmed list above)
 - Momentum (accelerating/decelerating)
-- Any notable patterns
 
-Then synthesise across all instruments using this scoring system:
+SCORING SYSTEM — GS FRAMEWORK:
 
 GROUP A — Geopolitical/Risk Sentiment (max ±3):
-  Read from: Gold trend, Oil trend, overall risk appetite
-  +3 = extreme risk-on (gold falling, equities surging)
-  -3 = extreme risk-off (gold surging, equities collapsing, oil spiking on geopolitics)
+  Read from: Gold trend (leading indicator), Oil trend (Iran/FTSE driver), risk appetite
+  +3 = extreme risk-on (gold falling, no geopolitical stress)
+  -3 = extreme risk-off (gold surging, oil spiking on Iran/geopolitics, VIX elevated)
 
-GROUP B — Central Banks / Macro (max ±2):
-  Read from: USD pairs (GBP/USD, EUR/USD), Gold vs USD relationship
-  +2 = dovish signals (USD weakening, gold rising on rate cut bets)
-  -2 = hawkish signals (USD strengthening, gold falling)
+GROUP B — Central Banks / FX (max ±2):
+  Read from: GBP/USD (FTSE inverse signal), EUR/USD (DAX inverse signal)
+  FX pair falling = USD strengthening = hawkish = negative for equities
+  FX pair rising = USD weakening = dovish = positive for equities
 
 GROUP C — Market Direction (max ±3):
-  Read from: S&P 500, DAX, FTSE 100 charts directly
-  +3 = all three in strong bull trend
-  -3 = all three in strong bear trend
+  Read from: S&P 500 (global risk lead), DAX, FTSE 100 charts directly
+  +3 = all three in strong bull trend with momentum
+  -3 = all three in strong bear trend (sell-off mode)
 
-NEWS ADJUSTMENT (max ±2): Set to 0 since no live news — focus on chart evidence only.
+NEWS ADJUSTMENT: 0 (chart-based analysis only — no live news available)
 
-Return ONLY valid JSON (no markdown, no explanation):
+TRADEABLE THRESHOLD (GS RULES — CRITICAL):
+  ±6 to ±8 = TIER 1 — Full size trade (1% account risk)
+  ±4 to ±5 = TIER 2 — Half size (0.5% risk). KEY level required.
+  ±3 or less = NO TRADE — Absolute rule, no exceptions.
+
+Return ONLY valid JSON (no markdown):
 {
   "instrument_readings": {
-    "gold":    { "trend": "BULLISH|BEARISH|SIDEWAYS", "key_level": "<price>", "note": "<one line>" },
-    "oil":     { "trend": "BULLISH|BEARISH|SIDEWAYS", "key_level": "<price>", "note": "<one line>" },
-    "gbp_usd": { "trend": "BULLISH|BEARISH|SIDEWAYS", "key_level": "<price>", "note": "<one line>" },
-    "sp500":   { "trend": "BULLISH|BEARISH|SIDEWAYS", "key_level": "<price>", "note": "<one line>" },
-    "dax":     { "trend": "BULLISH|BEARISH|SIDEWAYS", "key_level": "<price>", "note": "<one line>" },
-    "ftse":    { "trend": "BULLISH|BEARISH|SIDEWAYS", "key_level": "<price>", "note": "<one line>" }
+    "gold":    { "trend": "BULLISH|BEARISH|SIDEWAYS", "key_level": "<price>", "ema_ribbon": "<BULL_STACK|BEAR_STACK|MIXED|FLAT>", "pattern": "<pattern name or none>", "note": "<one line>" },
+    "oil":     { "trend": "BULLISH|BEARISH|SIDEWAYS", "key_level": "<price>", "ema_ribbon": "<status>", "pattern": "<pattern or none>", "note": "<one line>" },
+    "gbp_usd": { "trend": "BULLISH|BEARISH|SIDEWAYS", "key_level": "<price>", "ema_ribbon": "<status>", "pattern": "<pattern or none>", "note": "<one line>" },
+    "sp500":   { "trend": "BULLISH|BEARISH|SIDEWAYS", "key_level": "<price>", "ema_ribbon": "<status>", "pattern": "<pattern or none>", "note": "<one line>" },
+    "dax":     { "trend": "BULLISH|BEARISH|SIDEWAYS", "key_level": "<price>", "ema_ribbon": "<status>", "pattern": "<pattern or none>", "note": "<one line>" },
+    "ftse":    { "trend": "BULLISH|BEARISH|SIDEWAYS", "key_level": "<price>", "ema_ribbon": "<status>", "pattern": "<pattern or none>", "note": "<one line>" }
   },
   "scores": {
     "geopolitical_risk": <integer -3 to 3>,
@@ -51,8 +63,10 @@ Return ONLY valid JSON (no markdown, no explanation):
     "news_adjustment":   0
   },
   "total_score": <sum capped -8 to +8>,
-  "tier": <1, 2, or 3, or "NO TRADE">,
+  "tier": <1, 2, or "NO TRADE">,
+  "tradeable": <true if |total_score| >= 4, else false>,
   "direction": <"LONG", "SHORT", or "NO TRADE">,
+  "risk_size": <"Full size (1% risk)" if Tier 1, "Half size (0.5% risk)" if Tier 2, "NO TRADE" if not tradeable>,
   "reasoning": {
     "geopolitical_risk": "<what Gold and Oil charts tell you about risk sentiment>",
     "central_banks":     "<what FX pairs tell you about CB policy>",

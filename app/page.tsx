@@ -19,6 +19,7 @@ export interface MacroData {
   total_score: number;
   tier: number | string;
   direction: 'LONG' | 'SHORT' | 'NO TRADE';
+  tradeable?: boolean;
   reasoning: {
     geopolitical_risk: string;
     central_banks: string;
@@ -52,7 +53,11 @@ export interface PriceItem {
 export default function TradingDashboard() {
   const [macroData, setMacroData] = useState<MacroData | null>(null);
   const [, setPricesData] = useState<PricesData | null>(null);
-  const [macroTab, setMacroTab] = useState<'ai' | 'charts'>('charts');
+  const [macroTab, setMacroTab] = useState<'charts' | 'ai'>('charts');
+
+  const tradeable = macroData
+    ? Math.abs(macroData.total_score) >= 4
+    : undefined;
 
   return (
     <div className="min-h-screen bg-slate-950 font-mono">
@@ -60,36 +65,36 @@ export default function TradingDashboard() {
 
       <main className="max-w-screen-2xl mx-auto px-3 sm:px-4 pb-8 space-y-4">
 
-        {/* Row 1: Macro Score + Live Prices */}
+        {/* Row 1: Macro + Prices */}
         <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
-          {/* Macro panel with tab switcher */}
-          <div className="xl:col-span-3">
+          <div className="xl:col-span-3 space-y-2">
             {/* Tab switcher */}
-            <div className="flex gap-1 mb-2">
-              <button
-                onClick={() => setMacroTab('charts')}
+            <div className="flex gap-1">
+              <button onClick={() => setMacroTab('charts')}
                 className={`flex-1 py-2 rounded text-xs font-bold border transition-colors ${
                   macroTab === 'charts'
                     ? 'bg-violet-600 text-white border-violet-600'
                     : 'bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500'
-                }`}
-              >
+                }`}>
                 📊 MACRO FROM CHARTS
               </button>
-              <button
-                onClick={() => setMacroTab('ai')}
+              <button onClick={() => setMacroTab('ai')}
                 className={`flex-1 py-2 rounded text-xs font-bold border transition-colors ${
                   macroTab === 'ai'
                     ? 'bg-amber-500 text-slate-950 border-amber-500'
                     : 'bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500'
-                }`}
-              >
+                }`}>
                 🌐 AI + WEB SEARCH
               </button>
             </div>
 
-            {macroTab === 'charts' && <MacroFromCharts />}
-            {macroTab === 'ai' && <MacroScore onDataUpdate={setMacroData} />}
+            {/* Both panels always mounted — hidden/shown to preserve state */}
+            <div className={macroTab === 'charts' ? 'block' : 'hidden'}>
+              <MacroFromCharts />
+            </div>
+            <div className={macroTab === 'ai' ? 'block' : 'hidden'}>
+              <MacroScore onDataUpdate={setMacroData} />
+            </div>
           </div>
 
           <div className="xl:col-span-2">
@@ -98,9 +103,13 @@ export default function TradingDashboard() {
         </div>
 
         {/* Row 2: Trade Calculator */}
-        <TradeCalculator macroDirection={macroData?.direction} />
+        <TradeCalculator
+          macroDirection={macroData?.direction}
+          macroTier={macroData?.tier}
+          macroTradeable={tradeable}
+        />
 
-        {/* Row 3: Chart Analysis (15M) + News */}
+        {/* Row 3: Chart Analysis + News */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           <ChartAnalysis />
           <NewsCalendar />
