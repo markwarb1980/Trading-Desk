@@ -132,7 +132,7 @@ export async function POST(request: Request) {
 
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 1500,
+      max_tokens: 3000,
       messages: [{ role: 'user', content }],
     });
 
@@ -141,15 +141,34 @@ export async function POST(request: Request) {
       .map((b) => b.text)
       .join('\n');
 
-    // Extract JSON
+    // Extract JSON — try markdown block first, then bare object
     let result: Record<string, unknown>;
-    const jsonMatch = textContent.match(/```(?:json)?\s*([\s\S]*?)```/) ||
-                      [null, textContent.match(/\{[\s\S]*\}/)?.[0] || ''];
+    let jsonStr = '';
+    const mdMatch = textContent.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (mdMatch) {
+      jsonStr = mdMatch[1].trim();
+    } else {
+      const objMatch = textContent.match(/\{[\s\S]*\}/);
+      jsonStr = objMatch ? objMatch[0] : '';
+    }
+
     try {
-      result = JSON.parse((jsonMatch[1] || '').trim());
+      result = JSON.parse(jsonStr);
     } catch {
-      const objectMatch = textContent.match(/\{[\s\S]*\}/);
-      result = objectMatch ? JSON.parse(objectMatch[0]) : { raw: textContent };
+      // Attempt to fix truncated JSON by closing open structures
+      try {
+        // Count open braces/brackets and close them
+        let fixed = jsonStr;
+        const openBraces = (fixed.match(/\{/g) || []).length - (fixed.match(/\}/g) || []).length;
+        const openBrackets = (fixed.match(/\[/g) || []).length - (fixed.match(/\]/g) || []).length;
+        // Remove trailing comma if present before adding closers
+        fixed = fixed.replace(/,\s*$/, '');
+        for (let i = 0; i < openBrackets; i++) fixed += ']';
+        for (let i = 0; i < openBraces; i++) fixed += '}';
+        result = JSON.parse(fixed);
+      } catch {
+        result = { raw: textContent, error: 'JSON parse failed' };
+      }
     }
 
     if (!result.timestamp) result.timestamp = new Date().toISOString();

@@ -136,57 +136,34 @@ export default function MacroFromCharts() {
         if (file) compressed[key] = await compressImage(file);
       }
 
-      // Split into 2 batches of 3 to avoid rate limits
-      const batch1Keys = ['gold', 'oil', 'gbp_usd'];
-      const batch2Keys = ['sp500', 'dax', 'ftse'];
+      // Send all 6 charts in one request so Claude sees the full picture
+      const fd = new FormData();
+      for (const k of Object.keys(compressed)) {
+        fd.append(k, compressed[k], `${k}.jpg`);
+      }
 
-      const makeFormData = (keys: string[]) => {
-        const fd = new FormData();
-        fd.append('batch', 'true');
-        for (const k of keys) {
-          if (compressed[k]) fd.append(k, compressed[k], `${k}.jpg`);
-        }
-        return fd;
-      };
+      const res = await fetch('/api/macro-from-charts', { method: 'POST', body: fd });
+      if (!res.ok) {
+        const e = await res.json();
+        throw new Error(e.error || `Analysis failed: HTTP ${res.status}`);
+      }
 
-      // Run both batches sequentially (1s gap) to respect rate limits
-      const res1 = await fetch('/api/macro-from-charts', { method: 'POST', body: makeFormData(batch1Keys) });
-      await new Promise((r) => setTimeout(r, 1000));
-      const res2 = await fetch('/api/macro-from-charts', { method: 'POST', body: makeFormData(batch2Keys) });
+      const data: MacroChartsResult = await res.json();
+      if (data.error) throw new Error(data.error);
 
-      if (!res1.ok) { const e = await res1.json(); throw new Error(e.error || `Batch 1 failed: HTTP ${res1.status}`); }
-      if (!res2.ok) { const e = await res2.json(); throw new Error(e.error || `Batch 2 failed: HTTP ${res2.status}`); }
+      // Ensure total_score, direction, tier are set (route should return them but guard here too)
+      if (data.scores && data.total_score === undefined) {
+        const total = Math.max(-8, Math.min(8,
+          (data.scores.geopolitical_risk ?? 0) +
+          (data.scores.central_banks     ?? 0) +
+          (data.scores.market_direction  ?? 0)
+        ));
+        data.total_score = total;
+        data.direction   = total > 0 ? 'LONG' : total < 0 ? 'SHORT' : 'NO TRADE';
+        data.tier        = Math.abs(total) >= 6 ? 1 : Math.abs(total) >= 4 ? 2 : 'NO TRADE';
+      }
 
-      const [j1, j2]: [MacroChartsResult, MacroChartsResult] = await Promise.all([res1.json(), res2.json()]);
-
-      // Merge both batch results into one combined result
-      const merged: MacroChartsResult = {
-        instrument_readings: { ...j1.instrument_readings, ...j2.instrument_readings },
-        scores: {
-          geopolitical_risk: Math.round(((j1.scores?.geopolitical_risk ?? 0) + (j2.scores?.geopolitical_risk ?? 0)) / 2),
-          central_banks:     Math.round(((j1.scores?.central_banks     ?? 0) + (j2.scores?.central_banks     ?? 0)) / 2),
-          market_direction:  j2.scores?.market_direction ?? j1.scores?.market_direction ?? 0,
-          news_adjustment:   0,
-        },
-        key_risks:    [...(j1.key_risks ?? []), ...(j2.key_risks ?? [])].slice(0, 4),
-        dax_outlook:  j2.dax_outlook  ?? j1.dax_outlook,
-        ftse_outlook: j2.ftse_outlook ?? j1.ftse_outlook,
-        summary:      j2.summary ?? j1.summary,
-        charts_uploaded: 6,
-        timestamp:    new Date().toISOString(),
-      };
-
-      // Calculate final score and direction
-      const total = Math.max(-8, Math.min(8,
-        (merged.scores?.geopolitical_risk ?? 0) +
-        (merged.scores?.central_banks     ?? 0) +
-        (merged.scores?.market_direction  ?? 0)
-      ));
-      merged.total_score = total;
-      merged.direction   = total > 0 ? 'LONG' : total < 0 ? 'SHORT' : 'NO TRADE';
-      merged.tier        = Math.abs(total) >= 5 ? 1 : Math.abs(total) >= 3 ? 2 : Math.abs(total) >= 1 ? 3 : 'NO TRADE';
-
-      setResult(merged);
+      setResult(data);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Analysis failed');
     } finally {
