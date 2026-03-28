@@ -101,7 +101,19 @@ function ScoreBar({ score, max }: { score: number; max: number }) {
   );
 }
 
-export default function MacroFromCharts() {
+export interface MacroInstrumentReading {
+  trend: 'BULLISH' | 'BEARISH' | 'SIDEWAYS';
+  key_level: string;
+  ema_ribbon?: string;
+  pattern?: string;
+  note: string;
+}
+
+export default function MacroFromCharts({
+  onResult,
+}: {
+  onResult?: (readings: { dax?: MacroInstrumentReading; ftse?: MacroInstrumentReading }) => void;
+}) {
   const [files, setFiles] = useState<Record<string, File | null>>({});
   const [previews, setPreviews] = useState<Record<string, string>>({});
   const [result, setResult] = useState<MacroChartsResult | null>(null);
@@ -164,6 +176,12 @@ export default function MacroFromCharts() {
       }
 
       setResult(data);
+      if (onResult && data.instrument_readings) {
+        onResult({
+          dax:  data.instrument_readings['dax']  as MacroInstrumentReading | undefined,
+          ftse: data.instrument_readings['ftse'] as MacroInstrumentReading | undefined,
+        });
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Analysis failed');
     } finally {

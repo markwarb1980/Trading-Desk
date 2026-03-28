@@ -8,6 +8,7 @@ import ChartAnalysis from '@/components/ChartAnalysis';
 import TradeCalculator from '@/components/TradeCalculator';
 import NewsCalendar from '@/components/NewsCalendar';
 import { useState } from 'react';
+import type { MacroInstrumentReading } from '@/components/MacroFromCharts';
 
 export interface MacroData {
   scores: {
@@ -54,6 +55,10 @@ export default function TradingDashboard() {
   const [macroData, setMacroData] = useState<MacroData | null>(null);
   const [, setPricesData] = useState<PricesData | null>(null);
   const [macroTab, setMacroTab] = useState<'charts' | 'ai'>('charts');
+  const [macroReadings, setMacroReadings] = useState<{
+    dax?: MacroInstrumentReading;
+    ftse?: MacroInstrumentReading;
+  }>({});
 
   const tradeable = macroData
     ? Math.abs(macroData.total_score) >= 4
@@ -90,7 +95,7 @@ export default function TradingDashboard() {
 
             {/* Both panels always mounted — hidden/shown to preserve state */}
             <div className={macroTab === 'charts' ? 'block' : 'hidden'}>
-              <MacroFromCharts />
+              <MacroFromCharts onResult={setMacroReadings} />
             </div>
             <div className={macroTab === 'ai' ? 'block' : 'hidden'}>
               <MacroScore onDataUpdate={setMacroData} />
@@ -111,7 +116,7 @@ export default function TradingDashboard() {
 
         {/* Row 3: Chart Analysis + News */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          <ChartAnalysis />
+          <ChartAnalysis macroReadings={macroReadings} />
           <NewsCalendar />
         </div>
 

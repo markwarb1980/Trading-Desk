@@ -3,8 +3,9 @@
 import { useState, useRef, useCallback } from 'react';
 import {
   ScanLine, Upload, X, AlertTriangle, TrendingUp, TrendingDown,
-  Minus, Target, Shield, Layers, MapPin, BarChart2, RefreshCw,
+  Minus, Target, Shield, Layers, MapPin, BarChart2, RefreshCw, Clock,
 } from 'lucide-react';
+import type { MacroInstrumentReading } from '@/components/MacroFromCharts';
 
 /** Compress image to reduce token usage when sending to Claude */
 async function compressImage(file: File, maxWidth = 900, quality = 0.75): Promise<Blob> {
@@ -215,14 +216,50 @@ function AnalysisResult({ result }: { result: ChartAnalysisResult }) {
   );
 }
 
+function MacroContext({ reading }: { reading: MacroInstrumentReading }) {
+  const trendColor = reading.trend === 'BULLISH' ? 'text-emerald-400' :
+                     reading.trend === 'BEARISH' ? 'text-rose-400' : 'text-slate-400';
+  const trendIcon  = reading.trend === 'BULLISH' ? <TrendingUp className="w-3 h-3" /> :
+                     reading.trend === 'BEARISH' ? <TrendingDown className="w-3 h-3" /> :
+                     <Minus className="w-3 h-3" />;
+  return (
+    <div className="bg-violet-950/20 border border-violet-800/30 rounded p-2.5 space-y-1.5">
+      <div className="flex items-center gap-1.5 text-xs text-violet-400 font-semibold">
+        <Clock className="w-3 h-3" /> 1H Context — from Macro Charts
+      </div>
+      <div className="flex items-center justify-between">
+        <span className={`flex items-center gap-1 text-xs font-bold ${trendColor}`}>
+          {trendIcon} {reading.trend}
+        </span>
+        {reading.key_level && (
+          <span className="text-xs text-amber-400 tabular-nums font-semibold">{reading.key_level}</span>
+        )}
+      </div>
+      {reading.ema_ribbon && (
+        <div className="text-xs text-slate-500">
+          EMA: <span className="text-slate-300">{reading.ema_ribbon.replace(/_/g, ' ')}</span>
+        </div>
+      )}
+      {reading.pattern && reading.pattern.toLowerCase() !== 'none' && (
+        <div className="text-xs text-sky-400/80">{reading.pattern}</div>
+      )}
+      {reading.note && (
+        <p className="text-xs text-slate-500 leading-snug">{reading.note}</p>
+      )}
+    </div>
+  );
+}
+
 function ChartSlotPanel({
   instrument,
   slot,
+  macroReading,
   onFile,
   onClear,
 }: {
   instrument: Instrument;
   slot: ChartSlot;
+  macroReading?: MacroInstrumentReading;
   onFile: (file: File) => void;
   onClear: () => void;
 }) {
@@ -258,7 +295,10 @@ function ChartSlotPanel({
         </div>
       </div>
 
-      <div className="p-2">
+      <div className="p-2 space-y-2">
+        {/* 1H context from Macro From Charts analysis */}
+        {macroReading && <MacroContext reading={macroReading} />}
+
         {!slot.previewUrl ? (
           <div
             onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
@@ -318,7 +358,11 @@ function ChartSlotPanel({
   );
 }
 
-export default function ChartAnalysis() {
+export default function ChartAnalysis({
+  macroReadings = {},
+}: {
+  macroReadings?: { dax?: MacroInstrumentReading; ftse?: MacroInstrumentReading };
+}) {
   const [slots, setSlots] = useState<Record<SlotKey, ChartSlot>>({
     DAX:  { ...EMPTY_SLOT },
     FTSE: { ...EMPTY_SLOT },
@@ -404,6 +448,7 @@ export default function ChartAnalysis() {
             key={inst}
             instrument={inst}
             slot={slots[inst]}
+            macroReading={inst === 'DAX' ? macroReadings.dax : macroReadings.ftse}
             onFile={(f) => handleFile(inst, f)}
             onClear={() => clearSlot(inst)}
           />
