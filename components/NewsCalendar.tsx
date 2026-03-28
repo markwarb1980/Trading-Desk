@@ -155,11 +155,14 @@ export default function NewsCalendar() {
     setError(null);
     try {
       const res = await fetch('/api/news');
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || `HTTP ${res.status}`);
+      const text = await res.text();
+      let json: NewsData & { error?: string };
+      try {
+        json = JSON.parse(text);
+      } catch {
+        throw new Error(res.ok ? 'Invalid response from server' : `Server error ${res.status}`);
       }
-      const json: NewsData = await res.json();
+      if (!res.ok || json.error) throw new Error(json.error || `HTTP ${res.status}`);
       setData(json);
       setLastFetched(
         new Date().toLocaleTimeString('en-GB', {
