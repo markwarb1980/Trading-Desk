@@ -5,9 +5,10 @@ import { createAnthropicClient } from '@/lib/anthropic';
 export const maxDuration = 60;
 export const runtime = 'nodejs';
 
-const CHART_PROMPT = `You are a professional technical analyst specialising in DAX and FTSE 100 intraday trading.
+function buildChartPrompt(timeframe: string): string {
+  return `You are a professional technical analyst specialising in DAX and FTSE 100 intraday trading.
 
-Analyse this 15-minute chart screenshot carefully.
+Analyse this ${timeframe} chart screenshot carefully.
 
 Provide a detailed technical analysis covering:
 
@@ -72,12 +73,14 @@ Return your analysis as a valid JSON object ONLY (no markdown wrapper):
   "caveats": ["<caveat 1>", "<caveat 2>"],
   "summary": "<2-3 sentence professional summary of what you see>"
 }`;
+}
 
 export async function POST(request: Request) {
   try {
     const client = createAnthropicClient();
     const formData = await request.formData();
     const imageFile = formData.get('image') as File | null;
+    const timeframe = (formData.get('timeframe') as string | null) || '15M';
 
     if (!imageFile) {
       return NextResponse.json({ error: 'No image provided' }, { status: 400 });
@@ -115,7 +118,7 @@ export async function POST(request: Request) {
             },
             {
               type: 'text',
-              text: CHART_PROMPT,
+              text: buildChartPrompt(timeframe),
             },
           ],
         },
