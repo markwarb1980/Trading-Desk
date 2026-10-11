@@ -1,0 +1,16 @@
+//@version=6
+// Quad Setup — Price Overlay
+// Companion to "quad-setup-stochastics.pine". Per the rulebook's "Chart and
+// definitions" section: price chart shows 200 MA, 50 EMA, 20 EMA, VWAP —
+// nothing else.
+indicator("Quad Setup — Price Overlay", overlay = true)
+
+ma200 = ta.sma(close, 200)
+ema50 = ta.ema(close, 50)
+ema20 = ta.ema(close, 20)
+vwapLine = ta.vwap(close)
+
+plot(ma200,    title = "200 MA",  color = color.new(color.gray,   0), linewidth = 2)
+plot(ema50,    title = "50 EMA",  color = color.new(color.orange, 0), linewidth = 1)
+plot(ema20,    title = "20 EMA",  color = color.new(color.yellow, 0), linewidth = 1)
+plot(vwapLine, title = "VWAP",    color = color.new(color.purple, 0), linewidth = 1, style = plot.style_circles)

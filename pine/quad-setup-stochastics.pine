@@ -1,0 +1,93 @@
+//@version=6
+// Quad Setup — Stochastics & Alerts
+// Codifies the objectively-computable parts of the Quad Setup Rulebook v2
+// (see docs/quad-setup-rulebook.md): the four stochastics, the Full Quad
+// zone condition, the open-settled no-trade window, and the provisional
+// entry trigger. Fires alerts so you can set a TradingView alert on them.
+//
+// NOT automated here (per the rulebook itself — these require a human eye,
+// "let the market draw it"): valid channel / three pivots, price at the
+// line, trend alignment, and 9-3 divergence grading. When an alert fires,
+// confirm those by eye, then run the screenshot through the dashboard's
+// "QUAD SETUP" panel for the full six-step verdict.
+indicator("Quad Setup — Stochastics & Alerts", overlay = false)
+
+// ---- Inputs -----------------------------------------------------------
+oversold   = input.int(20, title = "Oversold threshold")
+overbought = input.int(80, title = "Overbought threshold")
+
+smooth44 = input.int(3, title = "44-stochastic smoothing", tooltip = "Rulebook leaves this unconfirmed. Defaulted to 3 to match lib/quadSetupRules.ts in the dashboard app.")
+
+noTradeSession = input.session("0800-0830", title = "No-trade window (exchange local time)", tooltip = "First N minutes after the cash open. Defaults to FTSE's 08:00 UK open + 30 min. For DE30EUR use the Xetra open (e.g. 0800-0830 Europe/Berlin); for SPX500 use the NYSE open (e.g. 0930-1000 America/New_York).")
+sessionTz      = input.string("Europe/Berlin", title = "Session timezone", tooltip = "e.g. Europe/Berlin for DE30EUR, America/New_York for SPX500.")
+
+showTable = input.bool(true, title = "Show readings table")
+
+// ---- Stochastics --------------------------------------------------------
+// Each "X-Y" stochastic in the rulebook is read as ONE line: %K(length X)
+// smoothed by a Y-period SMA (no separate %K/%D crossover system).
+stochLine(len, smooth) =>
+    ta.sma(ta.stoch(close, high, low, len), smooth)
+
+s93   = stochLine(9, 3)
+s143  = stochLine(14, 3)
+s44   = stochLine(44, smooth44)
+s6010 = stochLine(60, 10)
+
+plot(s93,   title = "9-3",   color = color.new(color.aqua,   0), linewidth = 2)
+plot(s143,  title = "14-3",  color = color.new(color.blue,   0), linewidth = 1)
+plot(s44,   title = "44",    color = color.new(color.orange, 0), linewidth = 1)
+plot(s6010, title = "60-10", color = color.new(color.fuchsia,0), linewidth = 1)
+
+hline(overbought, title = "Overbought", color = color.new(color.red, 50))
+hline(oversold,   title = "Oversold",   color = color.new(color.green, 50))
+hline(50, title = "Midline", color = color.new(color.gray, 80), linestyle = hline.style_dotted)
+
+// ---- Open-settled (step 1 — fully objective) -----------------------------
+inNoTradeWindow = not na(time(timeframe.period, noTradeSession, sessionTz))
+openSettled     = not inNoTradeWindow
+
+// ---- Full Quad (step 4 — fully objective) --------------------------------
+longQuad  = s93 < oversold   and s143 < oversold   and s44 < oversold   and s6010 < oversold
+shortQuad = s93 > overbought and s143 > overbought and s44 > overbought and s6010 > overbought
+
+longCandidate  = openSettled and longQuad
+shortCandidate = openSettled and shortQuad
+
+// ---- Provisional entry trigger --------------------------------------------
+longTrigger  = ta.crossover(s93, oversold)    and s143 < oversold   and s44 < oversold   and s6010 < oversold
+shortTrigger = ta.crossunder(s93, overbought) and s143 > overbought and s44 > overbought and s6010 > overbought
+
+// ---- Visuals --------------------------------------------------------------
+bgcolor(longCandidate  ? color.new(color.green, 85) : na, title = "Full Quad - LONG zone")
+bgcolor(shortCandidate ? color.new(color.red,   85) : na, title = "Full Quad - SHORT zone")
+bgcolor(inNoTradeWindow ? color.new(color.gray, 90) : na, title = "No-trade window")
+
+plotshape(longTrigger  and openSettled, title = "Entry trigger - LONG",  style = shape.triangleup,   location = location.bottom, color = color.lime, size = size.small)
+plotshape(shortTrigger and openSettled, title = "Entry trigger - SHORT", style = shape.triangledown, location = location.top,    color = color.red,  size = size.small)
+
+if showTable
+    var table t = table.new(position.top_right, 2, 6, bgcolor = color.new(color.black, 70), border_width = 1)
+    if barstate.islast
+        table.cell(t, 0, 0, "9-3",   text_color = color.white)
+        table.cell(t, 1, 0, str.tostring(s93, "#.##"), text_color = s93 < oversold ? color.lime : s93 > overbought ? color.red : color.white)
+        table.cell(t, 0, 1, "14-3",  text_color = color.white)
+        table.cell(t, 1, 1, str.tostring(s143, "#.##"), text_color = s143 < oversold ? color.lime : s143 > overbought ? color.red : color.white)
+        table.cell(t, 0, 2, "44",    text_color = color.white)
+        table.cell(t, 1, 2, str.tostring(s44, "#.##"), text_color = s44 < oversold ? color.lime : s44 > overbought ? color.red : color.white)
+        table.cell(t, 0, 3, "60-10", text_color = color.white)
+        table.cell(t, 1, 3, str.tostring(s6010, "#.##"), text_color = s6010 < oversold ? color.lime : s6010 > overbought ? color.red : color.white)
+        table.cell(t, 0, 4, "Open settled", text_color = color.white)
+        table.cell(t, 1, 4, openSettled ? "YES" : "NO — window", text_color = openSettled ? color.lime : color.orange)
+        table.cell(t, 0, 5, "Full Quad", text_color = color.white)
+        quadText = longCandidate ? "LONG" : shortCandidate ? "SHORT" : "—"
+        table.cell(t, 1, 5, quadText, text_color = (longCandidate or shortCandidate) ? color.yellow : color.gray)
+
+// ---- Alerts -----------------------------------------------------------
+// Set a TradingView alert on this indicator with one of these conditions.
+// Reminder in the message: these only confirm steps 1 and 4 of the
+// checklist — still verify channel, price-at-line, trend/divergence by eye.
+alertcondition(longCandidate,  title = "Full Quad - LONG",  message = "Full Quad (LONG) outside no-trade window on {{ticker}} {{interval}}. Confirm channel, price-at-line, and trend/divergence, then check the dashboard Quad Setup panel.")
+alertcondition(shortCandidate, title = "Full Quad - SHORT", message = "Full Quad (SHORT) outside no-trade window on {{ticker}} {{interval}}. Confirm channel, price-at-line, and trend/divergence, then check the dashboard Quad Setup panel.")
+alertcondition(longTrigger  and openSettled, title = "Entry Trigger - LONG",  message = "9-3 entry trigger (LONG) on {{ticker}} {{interval}} — only valid if the Full Quad and channel conditions are confirmed.")
+alertcondition(shortTrigger and openSettled, title = "Entry Trigger - SHORT", message = "9-3 entry trigger (SHORT) on {{ticker}} {{interval}} — only valid if the Full Quad and channel conditions are confirmed.")

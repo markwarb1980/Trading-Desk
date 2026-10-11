@@ -133,3 +133,16 @@ step (with the divergence rescue at step 5), and returns the verdict, hand,
 and entry/stop if valid. Same upload → Claude-vision pattern as the
 dashboard's existing DAX/FTSE "Chart Analysis" panel — no live TradingView
 connection required.
+
+### Getting notified automatically
+
+Claude has no live connection to TradingView (no API, no browser access
+from the dashboard's hosting environment), so the above still needs a
+screenshot each day. To cut that down to "only check when something's
+actually forming," two Pine Script indicators in `pine/` run directly on
+your TradingView chart and alert you the moment a Full Quad forms outside
+the no-trade window — see `pine/README.md` for install and alert setup.
+They only automate the objectively-computable steps (open-settled, Full
+Quad, entry trigger); channel validity, price-at-line, and divergence
+grading still need your eye before you trust the alert, exactly as the
+rulebook requires.
