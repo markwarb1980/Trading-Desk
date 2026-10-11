@@ -48,21 +48,38 @@ const HAND_LABEL: Record<string, { label: string; color: string }> = {
   THE_NUTS: { label: 'The Nuts', color: 'text-emerald-400 bg-emerald-950 border-emerald-800' },
 };
 
-function ConditionRow({ met, label, note }: { met: boolean; label: string; note?: string }) {
+function ChecklistRow({
+  step, met, skipped, label, note,
+}: {
+  step: number; met: boolean; skipped: boolean; label: string; note?: string;
+}) {
   return (
     <div className="flex items-start gap-1.5 text-xs">
-      {met ? (
+      {skipped ? (
+        <XCircle className="w-3.5 h-3.5 text-slate-700 flex-shrink-0 mt-0.5" />
+      ) : met ? (
         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0 mt-0.5" />
       ) : (
         <XCircle className="w-3.5 h-3.5 text-rose-500/70 flex-shrink-0 mt-0.5" />
       )}
       <div>
-        <span className={met ? 'text-slate-300' : 'text-slate-500'}>{label}</span>
-        {note && <p className="text-slate-600 mt-0.5">{note}</p>}
+        <span className={skipped ? 'text-slate-700' : met ? 'text-slate-300' : 'text-slate-500'}>
+          {step}. {label}
+        </span>
+        {note && !skipped && <p className="text-slate-600 mt-0.5">{note}</p>}
+        {skipped && <p className="text-slate-700 mt-0.5 italic">not reached</p>}
       </div>
     </div>
   );
 }
+
+const DIVERGENCE_COLOR: Record<string, string> = {
+  STRONG: 'text-emerald-400 bg-emerald-950 border-emerald-800',
+  MEDIUM: 'text-sky-400 bg-sky-950 border-sky-800',
+  WEAK: 'text-slate-400 bg-slate-800 border-slate-700',
+  HIDDEN: 'text-slate-500 bg-slate-800 border-slate-700',
+  NONE: 'text-slate-600 bg-slate-800 border-slate-700',
+};
 
 function VerdictPanel({ result }: { result: QuadVerdict }) {
   if (result.error || result.raw_analysis) {
@@ -74,7 +91,10 @@ function VerdictPanel({ result }: { result: QuadVerdict }) {
   }
 
   const hand = HAND_LABEL[result.hand] ?? HAND_LABEL.NONE;
-  const c = result.conditions;
+  const cl = result.checklist;
+  const stoppedAt = result.stopped_at_step;
+  const reached = (step: number) => stoppedAt === null || step <= stoppedAt;
+  const div = result.divergence;
 
   return (
     <div className="space-y-2 animate-slide-up">
@@ -84,7 +104,7 @@ function VerdictPanel({ result }: { result: QuadVerdict }) {
             ? 'bg-emerald-950 text-emerald-400 border-emerald-700'
             : 'bg-slate-800 text-slate-500 border-slate-700'
         }`}>
-          {result.trade_valid ? 'TRADE VALID' : 'PASS'}
+          {result.trade_valid ? 'TRADE VALID' : stoppedAt ? `STOP — STEP ${stoppedAt}` : 'PASS'}
         </span>
         <div className="flex items-center gap-2">
           {result.direction && (
@@ -100,25 +120,37 @@ function VerdictPanel({ result }: { result: QuadVerdict }) {
       </div>
 
       <div className="bg-slate-800/50 rounded p-2.5 space-y-1.5">
-        <ConditionRow met={c.valid_channel.met} label="1. Valid channel" note={c.valid_channel.note} />
-        <ConditionRow met={c.price_at_line.met} label="2. Price at the line" note={c.price_at_line.note} />
-        <ConditionRow met={c.full_quad.met} label="3. Full Quad" note={c.full_quad.note} />
-        <ConditionRow met={c.with_trend.met} label="4. With the trend" note={c.with_trend.note} />
-        <ConditionRow met={c.open_settled.met} label="5. Open has settled" note={c.open_settled.note} />
-        <ConditionRow
-          met={c.divergence.required ? c.divergence.present : true}
-          label={`6. Divergence${c.divergence.required ? ' (required)' : ' (optional)'}`}
-          note={c.divergence.note}
+        <ChecklistRow step={1} met={cl.step1_open_settled.met} skipped={!reached(1)} label="Open has settled" note={cl.step1_open_settled.note} />
+        <ChecklistRow step={2} met={cl.step2_valid_channel.met} skipped={!reached(2)} label="Valid channel" note={cl.step2_valid_channel.note} />
+        <ChecklistRow step={3} met={cl.step3_price_at_line.met} skipped={!reached(3)} label="Price at the line" note={cl.step3_price_at_line.note} />
+        <ChecklistRow step={4} met={cl.step4_full_quad.met} skipped={!reached(4)} label="Full Quad" note={cl.step4_full_quad.note} />
+        <ChecklistRow
+          step={5}
+          met={cl.step5_trend_aligned.met}
+          skipped={!reached(5)}
+          label={`Trend aligned${cl.step5_trend_aligned.channel_slope ? ` (channel: ${cl.step5_trend_aligned.channel_slope})` : ''}`}
+          note={cl.step5_trend_aligned.note}
         />
       </div>
 
-      {c.full_quad.readings && (
+      <div className="flex items-center justify-between bg-slate-800/40 rounded p-2 text-xs">
+        <span className="text-slate-500">9-3 divergence</span>
+        <div className="flex items-center gap-2">
+          {div.direction && <span className="text-slate-500">{div.direction}</span>}
+          <span className={`px-1.5 py-0.5 rounded border font-bold ${DIVERGENCE_COLOR[div.grade] ?? DIVERGENCE_COLOR.NONE}`}>
+            {div.grade}{div.counts ? ' ✓ counts' : ''}
+          </span>
+        </div>
+      </div>
+      {div.note && <p className="text-xs text-slate-600 -mt-1 px-1">{div.note}</p>}
+
+      {cl.step4_full_quad.readings && (
         <div className="grid grid-cols-4 gap-1.5 text-xs">
           {(['9-3', '14-3', '44', '60-10'] as const).map((k) => (
             <div key={k} className="bg-slate-800/40 rounded p-1.5 text-center">
               <div className="text-slate-600">{k}</div>
               <div className="font-bold tabular-nums text-slate-300">
-                {c.full_quad.readings[k] ?? '—'}
+                {cl.step4_full_quad.readings[k] ?? '—'}
               </div>
             </div>
           ))}

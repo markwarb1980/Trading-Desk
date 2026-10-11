@@ -1,114 +1,135 @@
-# Quad Setup — Rulebook
+# Quad Setup — Rulebook (v2)
 
-Source: `FTSE Quad Setup — Rulebook` (Oct 11, 2026, @Mark). Generalised here for
-daily use on **DE30EUR** and **SPX500** on the **5-minute** timeframe, and
-implemented in the dashboard as the "QUAD SETUP" panel
-(`components/QuadSetup.tsx`, `app/api/quad-setup/route.ts`,
+Source: `FTSE Quad Setup — Rulebook` (Oct 11, 2026, @Mark), updated v2.
+Generalised here for daily use on **DE30EUR** and **SPX500** on the
+**5-minute** timeframe, and implemented in the dashboard as the "QUAD SETUP"
+panel (`components/QuadSetup.tsx`, `app/api/quad-setup/route.ts`,
 `lib/quadSetupRules.ts` — that last file is the single source of truth the
 code reads from).
 
 ## The one setup
 
-Trade only a solid Quad at a valid channel line, in the direction of the
-trend, after the open has settled. All four stochastics must be in the zone
-at the same time, at the line. If any condition is missing, there is no
-trade.
+There is one trade: a full Quad at a valid channel line, in the direction of
+the channel, after the open has settled. Every condition must be a clear
+yes. If you have to argue yourself into it, it is a no.
 
-A divergence at the line upgrades the hand and the size. It never replaces
-the Quad.
+A 9-3 divergence at the line makes the hand bigger. **It is the only thing
+that allows a trade against the channel.**
 
-## Chart setup
+## Chart and definitions
 
-- Price chart: 200 MA, 50 EMA, 20 EMA, VWAP. Nothing else.
-- Oversold = below 20. Overbought = above 80.
+Price chart: 200 MA, 50 EMA, 20 EMA and VWAP. Below it: the four
+stochastics. Nothing else.
 
-| Stochastic | Role |
+| Term | Exact meaning |
 |---|---|
-| 9-3 | Fastest. Entry trigger and exit signal. |
-| 14-3 | Fast confirmation. |
-| 44 (smoothing **3**, assumed — unconfirmed) | Medium-term confirmation. |
-| 60-10 | Underlying strength/weakness. Slowest, hardest into the zone. |
+| Oversold / overbought | Below 20 / above 80 |
+| 9-3 | Fastest stochastic. Gives the entry trigger, the exit signal, **and the divergence**. |
+| 14-3, 44 | Confirmation (44 smoothed at **3**, assumed — unconfirmed) |
+| 60-10 | Underlying strength. Slowest to reach the zone. |
+| Long Quad | 9-3, 14-3, 44 and 60-10 all below 20 at the same time |
+| Short Quad | All four above 80 at the same time |
+| Pair | Three of the four in the zone. Not a Quad. |
+| Valid channel | Built from three pivots: a line through two pivots on one side, a parallel line through one pivot on the other. Two pivots is not a channel. |
+| Up-channel / down-channel | Both lines slope up / both slope down. This is the trend. |
+| Area of influence | Price touching or within a few points of the channel line. Doesn't need to be exact. |
+| Embedded | 60-10 stays above 80 (strong) or below 20 (weak) for an extended period. (Context term, not a checklist step.) |
 
-## Required conditions (all six, or pass)
+## 9-3 divergence — now graded
 
-1. **Valid channel** — built from three pivots: a line through two pivots on
-   one side, a parallel through the third on the other. Let the market draw
-   it; never force a line onto two points.
-2. **Price at the line** — price closes in the channel line's area of
-   influence (lower line for a long, upper for a short). Close is enough.
-3. **Full Quad** — all four stochastics simultaneously below 20 (long) or
-   above 80 (short). Three of four is a pair, not a Quad.
-4. **With the trend** — in an uptrend, take longs at the lower line; a short
-   at the top of an uptrend requires a divergence (condition 6 becomes
-   compulsory). Mirror in a downtrend.
-5. **Open has settled** — outside the no-trade window after the instrument's
-   cash open.
-6. **Divergence** (compulsory only when condition 4 requires it; otherwise
-   optional and only upgrades the hand) — price vs. stochastic at the line,
-   using the candle body's high/low (wick allowed only if the body isn't
-   readable).
+Compare the 9-3 at this swing with the 9-3 at the previous swing. Previous
+swing (Part 1): use the candle body's high/low, ignore the wick. This swing
+(Part 2): the wick counts.
 
-## Entry, stop, exit
+| Grade | Long (buy) | Short (sell) | Counts? |
+|---|---|---|---|
+| Strong | Price lower low, 9-3 higher low | Price higher high, 9-3 lower high | **Yes** |
+| Medium | Price equal low, 9-3 higher low | Price equal high, 9-3 lower high | **Yes** |
+| Weak | Price lower low, 9-3 equal low | Price higher high, 9-3 equal high | No |
+| Hidden | Price higher low, 9-3 lower low | Price lower high, 9-3 higher high | Not used (decision pending) |
+
+Only Strong or Medium divergence counts for anything — allowing a
+counter-trend entry, or upgrading the hand.
+
+## The checklist — work in order, stop at the first "no"
+
+**Long**
+1. Outside the no-trade window after the open?
+2. Valid channel with three pivots?
+3. Price in the area of influence of the **lower** channel line?
+4. All four stochastics below 20 at the same time?
+5. Is the channel sloping **up**?
+   - Yes → go to 6.
+   - No (down-channel) → only allowed with a **Strong or Medium** 9-3 buy
+     divergence. If there isn't one, stop.
+6. Grade the hand, then wait for the entry trigger.
+
+**Short** — the mirror: upper channel line, all four above 80, channel
+sloping down (or a qualifying sell divergence if it isn't).
+
+The open is 08:00 UK (12:30 IST until 25 Oct 2026, 13:30 IST after UK clocks
+go back) for the original FTSE rulebook — see the per-instrument opens used
+for DE30EUR/SPX500 below.
+
+## Entry, stop, exit (unchanged from v1)
 
 - **Entry (provisional)**: long when 9-3 turns back up through 20 while the
   other three are still below 20; short when 9-3 turns back down through 80
   while the other three are still above 80.
 - **Stop (provisional)**: close beyond the channel line — except a
   volume-spike flush through the line while the Quad is still intact (hold
-  through it; absorbed/reversed is the expected outcome). If the Quad has
-  also broken, the exception is void — get out.
+  through it). If the Quad has also broken, the exception is void — get out.
 - **Exit long**: 9-3 rotates back down to 20 while 60-10 still holds above
   80 — take it off, no second-guessing.
 - **Exit short**: 9-3 reaches/breaches 80 — take it off.
 
-## Sizing by hand
+## Sizing by hand (unchanged from v1)
 
 Bigger hand, bigger bet. Below three of a kind is not traded. **Actual
-position size / risk per hand is not yet set** — this rulebook only ranks
-the hand, it does not size it.
+position size / risk per hand is still not set.**
 
 | Hand | On the chart | Size |
 |---|---|---|
 | Three of a kind | Quad at a valid channel line | Base |
-| Full house | Quad + line + divergence | Larger than base |
+| Full house | Quad + line + a counting divergence | Larger than base |
 | Four of a kind | Quad + double-top/bottom divergence in channel | Larger again |
 | The nuts | Quad + running divergence (3 tops/bottoms, 3 lower/higher stochastic highs/lows) | Maximum |
 
-## No-trade list
+## No-trade list (unchanged)
 
 Pass on: three-of-four stochastics; a Quad with no channel line nearby; a
 channel drawn off only two pivots; anything during the open; a short at the
-top of an uptrend without a divergence; any trade taken just to feel active.
+top of an uptrend without a (counting) divergence; any trade taken just to
+feel active.
 
-## Discipline
+## Discipline (unchanged)
 
 You are the weak link, not the method. One setup, mastered. Perfect
-practice — a wrong trade practised is a bad habit learned. Losses are part
-of the business; size for them. Expect long waits — a full Quad including
-the 60-10 is rare.
+practice. Losses are part of the business; size for them. Expect long waits.
 
-## Still open (from the source rulebook — not yet decided)
+## Still open (unchanged from v1 — not yet decided)
 
-These are **not** silently assumed where they carry financial risk; the code
-either picks a flagged default or leaves the item undone:
+Carried over verbatim from the source rulebook's own "still to confirm"
+list; nothing new was resolved in v2:
 
 | Item | Status in code |
 |---|---|
-| 44-stochastic smoothing | Defaulted to **3** (`STOCH_44_SMOOTHING` in `lib/quadSetupRules.ts`) — confirm or change. |
+| 44-stochastic smoothing | Defaulted to **3** (`STOCH_44_SMOOTHING`) — confirm or change. |
 | No-trade window length (30 or 60 min) | Defaulted to **30 min** (`NO_TRADE_WINDOW_MINUTES`) — confirm or change. |
-| Cash-open time per instrument | DE30EUR → 08:00 CET (Xetra); SPX500 → 09:30 ET / 14:30 UK (NYSE). Original rulebook was FTSE-specific (08:00 UK) — these are standard opens for the other two, not from the source doc. Confirm. |
+| Cash-open time per instrument | DE30EUR → 08:00 CET (Xetra); SPX500 → 09:30 ET / 14:30 UK (NYSE). The source rulebook is FTSE-specific (08:00 UK) — these two are standard opens, not from the source doc. Confirm. |
 | Entry trigger alternative to 9-3 cross | Not changed — kept as specified. |
 | Stop alternative (fixed points vs. channel close) | Not changed — kept as specified. |
-| **Position size / risk per hand** | **Not set.** The panel reports the hand only, never a size or risk amount — this is a financial decision for you to make, not one to default silently. |
-| Whether the v2.0 macro score still filters direction above this setup | Not wired in. The dashboard already has a macro score (`components/MacroScore.tsx`, LONG/SHORT/NO TRADE, ±8 scale) — if you want Quad trades gated by it, that's a follow-up change, not assumed here. |
+| **Position size / risk per hand** | **Not set.** The panel reports the hand only, never a size or risk amount — a financial decision for you to make. |
+| Whether the v2.0 macro score still filters direction above this setup | Not wired in. The dashboard already has a macro score (`components/MacroScore.tsx`) — gating Quad trades by it is a follow-up change, not assumed here. |
+| "Hidden" divergence | Detected and reported, but never counts (per the rulebook: "decision pending"). |
 
 ## How the daily workflow works
 
-The "QUAD SETUP" panel on the dashboard (bottom of the page) has two upload
-slots, DE30EUR and SPX500. Each day: screenshot the 5-minute chart (with the
-200 MA / 50 EMA / 20 EMA / VWAP and all four stochastics visible), drop it
-into the matching slot, and Claude evaluates it against all six conditions
-above, returning a pass/trade-valid verdict, the hand, and the entry/stop if
-valid. This reuses the same upload → Claude-vision pattern already used by
-the dashboard's DAX/FTSE "Chart Analysis" panel — no live TradingView
-connection is required.
+The "QUAD SETUP" panel on the dashboard has two upload slots, DE30EUR and
+SPX500. Each day: screenshot the 5-minute chart (200 MA / 50 EMA / 20 EMA /
+VWAP + all four stochastics visible), drop it into the matching slot, and
+Claude works the checklist above in order, stopping at the first failing
+step (with the divergence rescue at step 5), and returns the verdict, hand,
+and entry/stop if valid. Same upload → Claude-vision pattern as the
+dashboard's existing DAX/FTSE "Chart Analysis" panel — no live TradingView
+connection required.

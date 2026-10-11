@@ -1,6 +1,10 @@
-// Codified from "FTSE Quad Setup — Rulebook" (Oct 11, 2026, @Mark).
-// Generalised here to any instrument with a defined cash-open time; applied to
-// DE30EUR and SPX500 on the 5-minute timeframe per the dashboard's daily workflow.
+// Codified from "FTSE Quad Setup — Rulebook" (Oct 11, 2026, @Mark), v2.
+// v2 restructured the setup from six unordered conditions into a strict,
+// sequential checklist (stop at the first "no") with a graded 9-3 divergence
+// that is the only way to trade against the channel's own slope.
+// Generalised here to any instrument with a defined cash-open time; applied
+// to DE30EUR and SPX500 on the 5-minute timeframe per the dashboard's daily
+// workflow.
 
 export type QuadInstrumentKey = 'DE30EUR' | 'SPX500';
 
@@ -18,33 +22,45 @@ export const QUAD_INSTRUMENTS: Record<QuadInstrumentKey, QuadInstrumentConfig> =
   SPX500: { label: 'S&P 500 / SPX500', openLocal: '09:30 ET / 14:30 UK (NYSE cash open)' },
 };
 
-// ASSUMPTION — unresolved in the rulebook ("Still to confirm"). Rulebook offered
-// 30 or 60 minutes; defaulting to the tighter 30. Change if you decide otherwise.
+// ASSUMPTION — still unresolved in the rulebook ("Still to confirm"). Rulebook
+// offers 30 or 60 minutes; defaulting to the tighter 30. Change if decided.
 export const NO_TRADE_WINDOW_MINUTES = 30;
 
 // ASSUMPTION — rulebook leaves the 44-stochastic smoothing unspecified
-// ("44 (smoothing to confirm)"). Defaulting to the common smoothing of 3.
+// ("Still to confirm"). Defaulting to the common smoothing of 3.
 export const STOCH_44_SMOOTHING = 3;
 
 export const OVERSOLD = 20;
 export const OVERBOUGHT = 80;
 
+export type DivergenceGrade = 'STRONG' | 'MEDIUM' | 'WEAK' | 'HIDDEN' | 'NONE';
+
 export interface QuadVerdict {
   instrument: string;
   timeframe: string;
-  conditions: {
-    valid_channel: { met: boolean; note: string };
-    price_at_line: { met: boolean; note: string };
-    full_quad: {
+  checklist: {
+    step1_open_settled: { met: boolean; note: string };
+    step2_valid_channel: { met: boolean; note: string };
+    step3_price_at_line: { met: boolean; note: string };
+    step4_full_quad: {
       met: boolean;
       direction: 'LONG' | 'SHORT' | null;
       readings: { '9-3': number | null; '14-3': number | null; '44': number | null; '60-10': number | null };
       note: string;
     };
-    with_trend: { met: boolean; note: string };
-    open_settled: { met: boolean; note: string };
-    divergence: { present: boolean; required: boolean; note: string };
+    step5_trend_aligned: {
+      met: boolean;
+      channel_slope: 'UP' | 'DOWN' | 'FLAT' | null;
+      note: string;
+    };
   };
+  divergence: {
+    grade: DivergenceGrade;
+    counts: boolean; // true only for STRONG or MEDIUM
+    direction: 'BUY' | 'SELL' | null;
+    note: string;
+  };
+  stopped_at_step: number | null; // 1-5, the first failing step; null = reached step 6
   trade_valid: boolean;
   direction: 'LONG' | 'SHORT' | null;
   hand: 'NONE' | 'THREE_OF_A_KIND' | 'FULL_HOUSE' | 'FOUR_OF_A_KIND' | 'THE_NUTS';
@@ -59,18 +75,37 @@ export interface QuadVerdict {
 
 export function buildQuadSetupPrompt(instrumentKey: QuadInstrumentKey, timeframe: string): string {
   const cfg = QUAD_INSTRUMENTS[instrumentKey];
-  return `GS Trading Desk analyst. Evaluate this ${timeframe} ${cfg.label} chart strictly against the "Quad Setup" rulebook below. Be conservative: if a condition can't be confirmed from the chart, mark it not met and say why in the note.
+  return `GS Trading Desk analyst. Evaluate this ${timeframe} ${cfg.label} chart strictly against the "Quad Setup" rulebook (v2) below. Work through the checklist IN ORDER and stop at the first "no" — exactly as the rulebook requires. Be conservative: if a step can't be confirmed from the chart, mark it not met and say why in the note.
 
-CHART SHOULD SHOW: price with 200 MA, 50 EMA, 20 EMA, VWAP; and four stochastics — 9-3 (fastest, entry/exit trigger), 14-3 (fast confirmation), 44 with smoothing ${STOCH_44_SMOOTHING} (medium-term confirmation), 60-10 (slowest, underlying strength/weakness). Oversold = below ${OVERSOLD}. Overbought = above ${OVERBOUGHT}.
+CHART SHOULD SHOW: price with 200 MA, 50 EMA, 20 EMA, VWAP; below it, four stochastics — 9-3 (fastest: entry trigger, exit signal, AND divergence), 14-3 and 44 (confirmation, 44 smoothed at ${STOCH_44_SMOOTHING}), 60-10 (slowest, underlying strength/weakness).
 
-ALL SIX CONDITIONS MUST BE TRUE TO TRADE. If one is missing, it's a pass — report trade_valid: false.
+DEFINITIONS:
+- Oversold / overbought: below ${OVERSOLD} / above ${OVERBOUGHT}.
+- Long Quad: 9-3, 14-3, 44 and 60-10 all below ${OVERSOLD} at the same time. Short Quad: all four above ${OVERBOUGHT} at the same time. Three of four is a "pair" — not a Quad.
+- Valid channel: built from three pivots — a line through two pivots on one side, a parallel line through the third pivot on the other side. Two pivots is NOT a channel; never force a line onto two points.
+- Up-channel / down-channel: both lines slope up / both slope down. This is the trend.
+- Area of influence: price touching or within a few points of the channel line — doesn't need to be exact.
+- Embedded (context only, not a required step): 60-10 stays above ${OVERBOUGHT} (strong) or below ${OVERSOLD} (weak) for an extended period.
 
-1. Valid channel — built from three pivots: a line through two pivots on one side, a parallel through the third pivot on the other side. The market must draw it; a line forced onto only two points is invalid.
-2. Price at the line — price closes in the area of influence of the channel line (lower line for a long, upper line for a short). Doesn't need to be exact.
-3. Full Quad — all four stochastics simultaneously in the same zone: all below ${OVERSOLD} for a long, all above ${OVERBOUGHT} for a short. Three out of four is only a "pair," not a Quad — mark not met.
-4. With the trend — in an uptrend, only longs at the lower line are standard; a short at the top of an uptrend REQUIRES a divergence (condition 6 becomes compulsory). Mirror in a downtrend.
-5. Open has settled — the setup candle must sit outside the no-trade window: the first ${NO_TRADE_WINDOW_MINUTES} minutes after this instrument's cash open (${cfg.openLocal}). Read the actual time off the chart's x-axis.
-6. Divergence (required only when condition 4 makes it compulsory; otherwise optional and only upgrades the hand) — price vs. stochastic at the line. Use the candle body's high/low, not the wick, unless the chart only allows reading the wick.
+9-3 DIVERGENCE (the ONLY thing that allows a trade against the channel's slope):
+Compare the 9-3 at this swing to the 9-3 at the previous swing. For the previous swing (Part 1), use the candle body's high/low and ignore the wick. For this swing (Part 2), the wick counts.
+- STRONG (counts): long — price lower low, 9-3 higher low. short — price higher high, 9-3 lower high.
+- MEDIUM (counts): long — price equal low, 9-3 higher low. short — price equal high, 9-3 lower high.
+- WEAK (does not count): long — price lower low, 9-3 equal low. short — price higher high, 9-3 equal high.
+- HIDDEN (not used — decision pending; detect and report it, but it never counts): long — price higher low, 9-3 lower low. short — price lower high, 9-3 higher high.
+Only STRONG or MEDIUM divergence counts for anything (allowing a counter-trend entry, or upgrading the hand).
+
+THE CHECKLIST — work the steps in order for whichever side (long or short) the stochastics are actually forming a Quad toward. Stop at the first "no":
+1. Open has settled — outside the no-trade window: the first ${NO_TRADE_WINDOW_MINUTES} minutes after this instrument's cash open (${cfg.openLocal}). Read the actual time off the chart's x-axis.
+2. Valid channel — three pivots, as defined above.
+3. Price at the line — in the area of influence of the LOWER channel line for a long, the UPPER channel line for a short.
+4. Full Quad — all four stochastics simultaneously in the same zone (below ${OVERSOLD} for long, above ${OVERBOUGHT} for short).
+5. Trend aligned — is the channel sloping the same way as the trade (up-channel for a long, down-channel for a short)?
+   - Yes → proceed (this step is met).
+   - No (trading against the channel's slope) → met ONLY if there is a STRONG or MEDIUM 9-3 divergence in the trade's direction. Otherwise this step fails and the setup stops here.
+6. (Not a pass/fail step) Grade the hand and report the provisional entry trigger.
+
+If any step 1-5 fails (and, for step 5, no qualifying divergence rescues it), trade_valid is false and stopped_at_step records the first failing step number. If all five pass, stopped_at_step is null and trade_valid is true.
 
 ENTRY TRIGGER (provisional): long when 9-3 turns back up through ${OVERSOLD} while the other three are still below it; short when 9-3 turns back down through ${OVERBOUGHT} while the other three are still above it.
 
@@ -78,27 +113,26 @@ STOP (provisional): a close beyond the channel line, UNLESS it's a volume-spike 
 
 EXIT: long — when 9-3 rotates back down to ${OVERSOLD} while 60-10 still holds above ${OVERBOUGHT}, take it off. Short — when 9-3 reaches/breaches ${OVERBOUGHT}, take it off.
 
-HAND / SIZE (sizing signal only — no position size or risk % is defined yet, per the rulebook; report the hand, not a size):
-- Three of a kind: Quad at a valid channel line.
-- Full house: Quad + line + divergence.
+HAND / SIZE (sizing signal only — no position size or risk % is defined yet; report the hand, not a size):
+- Three of a kind: Quad at a valid channel line (steps 1-5 all met via trend alignment, no divergence needed).
+- Full house: Quad + line + a counting (Strong/Medium) divergence.
 - Four of a kind: Quad + double-top/double-bottom divergence in the channel.
 - The nuts: Quad + running divergence (three tops/bottoms, three lower/higher stochastic highs/lows).
-- Below three of a kind (any condition missing): NONE — not traded.
-
-PASS LIST (if any apply, trade_valid must be false): three-of-four stochastics only; Quad with no channel line nearby; channel drawn off only two pivots; anything inside the no-trade window; a short at the top of an uptrend without a divergence.
+- Below three of a kind (any step failed, no rescue): NONE — not traded.
 
 Return ONLY valid JSON (no markdown), exactly this shape:
 {
   "instrument": "${cfg.label}",
   "timeframe": "${timeframe}",
-  "conditions": {
-    "valid_channel": { "met": true|false, "note": "<brief>" },
-    "price_at_line": { "met": true|false, "note": "<brief>" },
-    "full_quad": { "met": true|false, "direction": "LONG"|"SHORT"|null, "readings": { "9-3": <number|null>, "14-3": <number|null>, "44": <number|null>, "60-10": <number|null> }, "note": "<brief>" },
-    "with_trend": { "met": true|false, "note": "<brief>" },
-    "open_settled": { "met": true|false, "note": "<brief, state the time read off the chart>" },
-    "divergence": { "present": true|false, "required": true|false, "note": "<brief>" }
+  "checklist": {
+    "step1_open_settled": { "met": true|false, "note": "<brief, state the time read off the chart>" },
+    "step2_valid_channel": { "met": true|false, "note": "<brief>" },
+    "step3_price_at_line": { "met": true|false, "note": "<brief>" },
+    "step4_full_quad": { "met": true|false, "direction": "LONG"|"SHORT"|null, "readings": { "9-3": <number|null>, "14-3": <number|null>, "44": <number|null>, "60-10": <number|null> }, "note": "<brief>" },
+    "step5_trend_aligned": { "met": true|false, "channel_slope": "UP"|"DOWN"|"FLAT"|null, "note": "<brief>" }
   },
+  "divergence": { "grade": "STRONG"|"MEDIUM"|"WEAK"|"HIDDEN"|"NONE", "counts": true|false, "direction": "BUY"|"SELL"|null, "note": "<brief>" },
+  "stopped_at_step": <1-5 or null>,
   "trade_valid": true|false,
   "direction": "LONG"|"SHORT"|null,
   "hand": "NONE"|"THREE_OF_A_KIND"|"FULL_HOUSE"|"FOUR_OF_A_KIND"|"THE_NUTS",
