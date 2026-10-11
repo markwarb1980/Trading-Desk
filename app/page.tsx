@@ -5,6 +5,7 @@ import MacroScore from '@/components/MacroScore';
 import MacroFromCharts from '@/components/MacroFromCharts';
 import LivePrices from '@/components/LivePrices';
 import ChartAnalysis from '@/components/ChartAnalysis';
+import QuadSetup from '@/components/QuadSetup';
 import TradeCalculator from '@/components/TradeCalculator';
 import NewsCalendar from '@/components/NewsCalendar';
 import { useState } from 'react';
@@ -119,6 +120,9 @@ export default function TradingDashboard() {
           <ChartAnalysis macroReadings={macroReadings} />
           <NewsCalendar />
         </div>
+
+        {/* Row 4: Quad Setup */}
+        <QuadSetup />
 
       </main>
 
